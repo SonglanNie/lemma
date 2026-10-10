@@ -52,8 +52,12 @@ final class MinimapInteractionTests: XCTestCase {
         let start = fixture.sliderTop + fixture.sliderHeight / 2
         fixture.minimap.mouseDown(with: try fixture.event(.leftMouseDown, y: start))
         fixture.minimap.mouseDragged(with: try fixture.event(.leftMouseDragged, y: start + 60))
-        try await Task.sleep(for: .milliseconds(40))
-        fixture.controller.updatePage()
+        // The drag navigates on the next frame's timer, which a busy or headless machine (CI) can fire late.
+        for _ in 0..<50 {
+            try await Task.sleep(for: .milliseconds(20))
+            fixture.controller.updatePage()
+            if fixture.controller.pageNumber > 21 { break }
+        }
         XCTAssertGreaterThan(fixture.controller.pageNumber, 21,
                              "Single-page mode must navigate the book rather than scroll inside the current page.")
         fixture.minimap.mouseUp(with: try fixture.event(.leftMouseUp, y: start + 60))
