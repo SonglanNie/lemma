@@ -1,0 +1,44 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: transparent; color: light-dark(#252725, #e7e9e6); font: 14px/1.65 -apple-system, BlinkMacSystemFont, sans-serif; overflow-wrap: anywhere; }
+article { padding: 2px 1px 8px; }
+article > :first-child { margin-top: 0; }
+article > :last-child { margin-bottom: 0; }
+p { margin: 0 0 12px; }
+h1, h2, h3, h4 { font-size: 1.12em; line-height: 1.4; margin: 20px 0 8px; font-weight: 650; }
+h1 { font-size: 1.3em; }
+ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+li { margin: 4px 0; }
+li > p { margin: 3px 0; }
+blockquote { margin: 12px 0; padding: 10px 14px; background: light-dark(#f0f2ec, #30332b); border-radius: 6px; }
+code { font: 12px/1.5 ui-monospace, monospace; padding: 2px 4px; background: light-dark(#edf0e9, #30342d); border-radius: 3px; }
+pre { padding: 12px; border-radius: 6px; background: light-dark(#edf0e9, #30342d); white-space: pre-wrap; overflow-x: auto; }
+pre code { padding: 0; background: none; }
+a { color: light-dark(#515b20, #c7cd8a); text-decoration: underline; text-underline-offset: 3px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 12px 0; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid light-dark(#d9ded4, #484e43); }
+.katex { font-size: 1.06em; }
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 7px 2px; margin: 12px 0; }
+.katex-display > .katex { white-space: nowrap; }
+.katex-error { white-space: pre-wrap; }
+hr { border: 0; border-top: 1px solid light-dark(#d9ded4, #484e43); margin: 18px 0; }
+
+.step { display: flex; gap: 8px; align-items: flex-start; padding: 2px 4px; border-radius: 6px; cursor: default; }
+.step:hover { background: light-dark(rgba(80, 90, 30, 0.05), rgba(200, 205, 140, 0.06)); }
+.step-gutter { flex: 0 0 38px; display: flex; justify-content: space-between; font: 11px/2.6 ui-monospace, monospace; color: light-dark(#9a9d96, #6f736b); padding-top: 4px; }
+.step-mark { font-weight: 700; width: 14px; text-align: center; }
+.step-holds .step-mark { color: light-dark(#2f8a3e, #6fd27f); }
+.step-fails .step-mark, .step-error .step-mark { color: light-dark(#c4361f, #ff7b66); }
+.step-unchecked .step-mark { color: light-dark(#a07a14, #e5c25a); }
+.step-given .step-mark, .step-definition .step-mark, .step-declaration .step-mark { color: light-dark(#5c6427, #c7cd8a); }
+.step-body { flex: 1; min-width: 0; }
+.step-body .katex-display { margin: 4px 0; padding: 4px 2px; text-align: left; }
+.step-body .katex-display > .katex { text-align: left; }
+.step-fails .step-body .katex-display, .step-error .step-body .katex-display { background: light-dark(rgba(196, 54, 31, 0.06), rgba(255, 123, 102, 0.08)); border-radius: 5px; }
+.step-message { font-size: 12px; line-height: 1.45; color: light-dark(#8f2a17, #ff9c8a); margin: 0 0 8px 2px; }
+.step-unchecked .step-message { color: light-dark(#7b5d0e, #e5c25a); }
+.step-given .step-message, .step-definition .step-message, .step-declaration .step-message { color: light-dark(#6a6d64, #9da196); }
+.step-detail { font: 11px/1.45 ui-monospace, monospace; color: light-dark(#6a6d64, #9da196); margin-top: 2px; }
+.step-comment { font-style: italic; color: light-dark(#6a6d64, #9da196); font-size: 12.5px; padding: 6px 0; }
+.step-source { display: block; margin: 6px 0; white-space: pre-wrap; }
+.step-empty { color: light-dark(#8a8d86, #7d8178); font-size: 12.5px; }

@@ -1,0 +1,19 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version && sw_vers
+      - name: Build
+        run: swift build -c release
+      - name: Core tests
+        run: swift test --filter LemmaCoreTests
+      - name: App tests
+        run: swift test --filter LemmaAppTests

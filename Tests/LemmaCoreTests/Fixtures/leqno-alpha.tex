@@ -1,0 +1,40 @@
+% Fixture: an amsart paper with equation numbers on the left, alphabetic citation labels and a two-column
+% reference list. Compile with: tectonic leqno-alpha.tex
+\documentclass[leqno]{amsart}
+\usepackage{amssymb}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\begin{document}
+\title{Recovery of Sparse Signals}
+\author{A. Fixture}
+\maketitle
+\section{Setting}
+Let $A$ be an $n \times m$ measurement matrix with $n < m$, and consider the program
+\begin{equation}\label{eq:p1}
+\min_x \|x\|_{\ell_1} \quad \text{subject to} \quad Ax = y .
+\end{equation}
+Program \eqref{eq:p1} is known as basis pursuit [CDS98]. Its stability was studied in [CRT06, Theorem 1].
+\begin{equation}\label{eq:rip}
+(1-\delta_S)\|c\|^2 \le \|A_T c\|^2 \le (1+\delta_S)\|c\|^2 .
+\end{equation}
+The inequality \eqref{eq:rip} is the restricted isometry property [CT05].
+\section{Main result}
+\begin{theorem}\label{thm:main}
+If $\delta_{3S} + 3\delta_{4S} < 2$, then the solution of \eqref{eq:p1} recovers every $S$-sparse signal.
+\end{theorem}
+\begin{proof}
+Combine \eqref{eq:rip} with Lemma \ref{lem:cone} below.
+\end{proof}
+\begin{lemma}\label{lem:cone}
+The error $h = x^\sharp - x_0$ obeys the cone constraint $\|h_{T^c}\|_{\ell_1} \le \|h_T\|_{\ell_1}$.
+\end{lemma}
+\begin{proof}
+This follows from the optimality of $x^\sharp$ in \eqref{eq:p1}; see also [Don06].
+\end{proof}
+\begin{thebibliography}{CRT06}
+\bibitem[CDS98]{cds} S. S. Chen, D. L. Donoho and M. A. Saunders, Atomic decomposition by basis pursuit, SIAM J. Sci. Comput. 20 (1998), 33--61.
+\bibitem[CRT06]{crt} E. J. Cand\`es, J. Romberg and T. Tao, Stable signal recovery from incomplete and inaccurate measurements, Comm. Pure Appl. Math. 59 (2006), 1207--1223.
+\bibitem[CT05]{ct} E. J. Cand\`es and T. Tao, Decoding by linear programming, IEEE Trans. Inform. Theory 51 (2005), 4203--4215.
+\bibitem[Don06]{don} D. L. Donoho, Compressed sensing, IEEE Trans. Inform. Theory 52 (2006), 1289--1306.
+\end{thebibliography}
+\end{document}

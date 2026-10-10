@@ -1,0 +1,583 @@
+import AppKit
+@preconcurrency import ScreenCaptureKit
+import LemmaCore
+
+/// Development hooks for visual review, enabled only when Lemma is launched with LEMMA_QA_DIR set.
+/// Another local process posts `com.lemma.qa` distributed notifications (`com.lemma.qa.<channel>` when
+/// LEMMA_QA_CHANNEL is set); Lemma answers by writing
+/// snapshots of its own windows (no screen-recording permission is involved) and state files into that directory.
+/// Each request names its output; `<name>.done` appears when the request has been handled.
+@MainActor
+final class QAHooks: NSObject {
+    static private(set) var shared: QAHooks?
+    let directory: URL
+    weak var store: StudyStore?
+
+    /// The shipping app (bundle `com.lemma.app`) never listens, whatever its environment: only re-identified QA copies
+    /// (`com.lemma.app.qa…`) and unbundled development runs do, so no other process can drive a user's Lemma.
+    static var isAllowed: Bool {
+        guard let id = Bundle.main.bundleIdentifier else { return true }
+        return id.hasPrefix("com.lemma.app.qa") || !id.hasPrefix("com.lemma.app")
+    }
+
+    static func installIfRequested(store: StudyStore) {
+        guard shared == nil, isAllowed, let path = ProcessInfo.processInfo.environment["LEMMA_QA_DIR"], !path.isEmpty else { return }
+        let hooks = QAHooks(directory: URL(fileURLWithPath: path, isDirectory: true), store: store)
+        // Two QA copies running at once each listen on their own channel.
+        let channel = ProcessInfo.processInfo.environment["LEMMA_QA_CHANNEL"].map { "com.lemma.qa.\($0)" } ?? "com.lemma.qa"
+        DistributedNotificationCenter.default().addObserver(hooks, selector: #selector(received(_:)), name: Notification.Name(channel),
+                                                            object: nil, suspensionBehavior: .deliverImmediately)
+        shared = hooks
+    }
+
+    private init(directory: URL, store: StudyStore) {
+        self.directory = directory; self.store = store
+        super.init()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    @objc private func received(_ notification: Notification) {
+        let info = (notification.userInfo as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        // Several QA copies can run at once: a request naming another copy's QA folder is not for this one.
+        if let target = info["qaDir"], URL(fileURLWithPath: target).standardizedFileURL.path != directory.standardizedFileURL.path { return }
+        let name = info["name"] ?? UUID().uuidString
+        Task { @MainActor in
+            var message = "ok"
+            do { try await handle(info["action"] ?? "", info: info, name: name) } catch { message = "error: \(error.localizedDescription)" }
+            try? message.write(to: directory.appendingPathComponent("\(name).done"), atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func handle(_ action: String, info: [String: String], name: String) async throws {
+        guard let store else { return }
+        switch action {
+        case "snapshot": try await snapshot(to: directory.appendingPathComponent("\(name).png"))
+        case "state":
+            let data = try JSONSerialization.data(withJSONObject: store.qaState(), options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: directory.appendingPathComponent("\(name).json"))
+        case "open":
+            guard let path = info["path"] else { throw QAError.missing("path") }
+            store.open(URL(fileURLWithPath: path))
+            if let page = info["page"].flatMap(Int.init) { try await Task.sleep(for: .milliseconds(300)); store.reader.goToPage(page) }
+        case let action where action.hasPrefix("tutorial"):
+            TutorialCenter.shared.performQA(action, info: info, store: store)
+        default:
+            try await store.performQA(action, info: info)
+        }
+        try await Task.sleep(for: .milliseconds(Int(info["settle"] ?? "") ?? 0))
+    }
+
+    /// Captures every visible Lemma window composited as on screen: the main window with its popovers, sheets and menus.
+    func snapshot(to url: URL) async throws {
+        let content = try await SCShareableContent.currentProcess
+        // Tiny windows (macOS's text insertion indicator beside a focused field) would otherwise be all that is captured.
+        let windows = content.windows.filter { $0.isOnScreen && $0.windowLayer >= 0 && $0.windowLayer != 24 && $0.frame.width > 40 && $0.frame.height > 40 }
+        guard !windows.isEmpty else {
+            // The window is on another Space or hidden: capture it on its own, without bringing Lemma forward.
+            guard let main = content.windows.filter({ $0.windowLayer == 0 && $0.frame.width > 400 }).max(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }) else {
+                throw QAError.missing("window")
+            }
+            let configuration = SCStreamConfiguration()
+            let scale = NSScreen.screens.first?.backingScaleFactor ?? 2
+            configuration.width = Int(main.frame.width * scale); configuration.height = Int(main.frame.height * scale)
+            configuration.showsCursor = false
+            let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: main), configuration: configuration)
+            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw QAError.missing("image") }
+            try png.write(to: url, options: .atomic)
+            return
+        }
+        let union = windows.map(\.frame).reduce(CGRect.null) { $0.union($1) }
+        guard let display = content.displays.first(where: { $0.frame.intersects(union) }) ?? content.displays.first else { throw QAError.missing("display") }
+        let rect = union.intersection(display.frame)
+        let scale = NSScreen.screens.first { $0.frame.width == display.frame.width }?.backingScaleFactor ?? 2
+        let configuration = SCStreamConfiguration()
+        configuration.sourceRect = CGRect(x: rect.minX - display.frame.minX, y: rect.minY - display.frame.minY, width: rect.width, height: rect.height)
+        configuration.width = Int(rect.width * scale); configuration.height = Int(rect.height * scale)
+        configuration.showsCursor = false
+        let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, including: windows), configuration: configuration)
+        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw QAError.missing("image") }
+        try png.write(to: url, options: .atomic)
+    }
+
+    enum QAError: LocalizedError {
+        case missing(String)
+        var errorDescription: String? { if case let .missing(what) = self { "Missing \(what)" } else { nil } }
+    }
+}
+
+@MainActor
+extension StudyStore {
+    /// A summary of the visible state for automated checks.
+    func qaState() -> [String: Any] {
+        var state: [String: Any] = [
+            "page": reader.pageNumber, "pageCount": reader.pageCount, "scale": reader.scale,
+            "hasSelection": reader.hasSelection, "showLibrary": showLibrary, "showStudy": showStudy, "focusMode": focusMode,
+            "studySection": studySection.rawValue, "status": status, "notes": workspace?.notes.count ?? 0
+        ]
+        state["workspace"] = workspace?.title
+        state["libraries"] = libraries.collections.map { collection in
+            ["id": collection.id, "title": collection.displayTitle, "count": libraries.entries.filter { $0.collectionID == collection.id }.count] as [String: Any]
+        }
+        state["libraryIssues"] = libraries.issues
+        state["libraryPDFCount"] = libraryPDFCount
+        state["arxivResults"] = arxivResults.map { ["id": $0.id, "title": $0.title] }
+        state["arxivSearching"] = arxivSearching
+        state["arxivSearchError"] = arxivSearchError
+        state["referencePeek"] = referencePeek?.mention.key.title
+        state["tabs"] = tabs.map(\.title)
+        state["navigator"] = navigatorSection.rawValue
+        state["panel"] = showPanel ? panelTab.rawValue : nil
+        state["split"] = split?.title
+        state["breadcrumb"] = breadcrumb().map(\.title)
+        state["printedPage"] = printedLabel(for: reader.pageNumber - 1)
+        state["analysis"] = analysis?.analysis.map { ["definitions": $0.definitions.count, "index": $0.index.count, "bibliography": $0.bibliography.count, "citations": $0.citations.count] }
+        state["analyzing"] = analysis?.progress.map { "\($0.done)/\($0.total)" }
+        // The current page's rectangle in global screen coordinates (top-left origin), for posting real clicks.
+        if let view = reader.view, let window = view.window, let page = view.currentPage, let screen = window.screen ?? NSScreen.screens.first {
+            let rect = window.convertToScreen(view.convert(view.convert(page.bounds(for: .cropBox), from: page), to: nil))
+            let top = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
+            state["pageScreenRect"] = [rect.minX, top - rect.maxY, rect.width, rect.height]
+            state["notesOnPage"] = workspace?.notes.filter { $0.anchor.pageIndex == reader.pageNumber - 1 }.map { "\($0.kind.rawValue):\($0.title)" }
+            // Visible reference mentions with their centres in screen coordinates (top-left origin), for real hover and clicks.
+            var mentions: [[String: Any]] = []
+            for visible in view.visiblePages {
+                guard let document = view.document else { break }
+                let index = document.index(for: visible)
+                for mention in references?.mentions(onPage: index) ?? [] where !mention.isDefinition {
+                    guard let first = mention.rects.first else { continue }
+                    let local = view.convert(first, from: visible)
+                    guard view.bounds.contains(CGPoint(x: local.midX, y: local.midY)) else { continue }
+                    let screenRect = window.convertToScreen(view.convert(local, to: nil))
+                    mentions.append(["title": mention.key.title, "x": screenRect.midX, "y": top - screenRect.midY])
+                }
+            }
+            state["mentions"] = mentions
+        }
+        state["marginEditor"] = reader.view?.marginNotePopover?.popover.isShown == true
+        if let id = openLabID, let notebook = lab(id) {
+            let session = lab.sessions[id]
+            let kernel: [String: Any] = ["pid": session?.kernel?.processIdentifier ?? 0, "message": session?.message ?? ""]
+            state["labKernel"] = kernel
+            state["lab"] = ["title": notebook.title, "cells": notebook.cells.count, "kernel": lab.sessions[id]?.state.label ?? "none",
+                            "sources": notebook.cells.map { String($0.source.prefix(80)) },
+                            "outputs": notebook.cells.map { $0.outputs.map { "\($0.kind.rawValue):\($0.text.prefix(60))" } }]
+        }
+        state["labPython"] = ["interpreter": lab.interpreter?.path ?? "", "preferred": lab.preferredPath, "problem": lab.interpreterProblem ?? "",
+                              "kernels": lab.sessions.values.compactMap { $0.kernel?.processIdentifier }]
+        state["mathWebViewsIdle"] = MathWebViews.shared.idleCount
+        state["labInterpreters"] = lab.interpreters.map { "\($0.path) \($0.version)" }
+        state["labSetupBases"] = lab.setup.bases.map { "\($0.path) \($0.version)" }
+        state["labSetup"] = ["phase": "\(lab.setup.phase)", "fraction": lab.setup.progress.fraction, "detail": lab.setup.progress.detail,
+                             "failure": lab.setup.failure ?? "", "window": LabPythonSetupWindow.isVisible]
+        state["readingLog"] = workspace.map { ["pages": $0.readingLog.pageSeconds.count, "total": $0.readingLog.totalSeconds] }
+        state["hoverPreview"] = reader.view?.hoverPreview.isShown == true
+        state["structure"] = analysis?.analysis.map { ["statements": $0.structure.statements.count, "proofs": $0.structure.proofs.count,
+                                                       "edges": $0.structure.edges.count, "symbols": $0.symbols.count, "headings": $0.headings.count] }
+        state["foldedProofs"] = workspace?.foldedProofs.count
+        state["ruler"] = reader.rulerLine.map { ["page": $0.pageIndex + 1, "line": $0.index + 1, "count": $0.count] }
+        state["readingStatement"] = readingStatement()?.label
+        state["hierarchyKey"] = hierarchyKey?.title
+        state["map"] = openMap != nil
+        state["sideTabs"] = sideEditors.map { sideTitle($0) }
+        state["activeSide"] = activeSideEditor.map { sideTitle($0) }
+        if let id = openDerivationID, let report = derivationReports[id] {
+            state["derivation"] = ["title": derivation(id)?.title ?? "", "holds": report.holds, "fails": report.fails, "unchecked": report.unchecked,
+                                   "lines": report.lines.map { "\($0.line + 1):\($0.status.rawValue):\($0.message)" }]
+        }
+        let problems = problemCounts
+        state["problems"] = [problems.errors, problems.warnings, problems.infos]
+        if let editor = mainWindow?.firstResponder as? LabTextView {
+            state["editor"] = ["string": editor.string, "selection": [editor.selectedRange().location, editor.selectedRange().length]]
+        }
+        return state
+    }
+
+    /// “name=Theorem&number=1.3” for QA actions on a statement.
+    private func statementKey(_ info: [String: String]) -> ReferenceKey? {
+        guard let number = info["number"] else { return nil }
+        let name = info["name"]
+        return analysis?.structure.statements.first { $0.key.number == number && (name == nil || $0.key.name == name) }?.key
+            ?? ReferenceKey(kind: info["kind"].flatMap(ReferenceKind.init(rawValue:)) ?? .theorem, number: number, name: name)
+    }
+
+    /// Actions available to visual review, named after the menu commands they mirror.
+    func performQA(_ action: String, info: [String: String]) async throws {
+        switch action {
+        // 3.0 find widget: findShow [query=…] [matchCase=1], findNext, findPrevious, findClose.
+        case "findShow":
+            FindController.shared.show(self)
+            if let query = info["query"] { FindController.shared.query = query }
+            if let matchCase = info["matchCase"] { FindController.shared.matchCase = matchCase == "1" }
+            if let wholeWord = info["wholeWord"] { FindController.shared.wholeWord = wholeWord == "1" }
+            if info["query"] != nil || info["matchCase"] != nil || info["wholeWord"] != nil { FindController.shared.search() }
+        case "openSample": openSampleBook()
+        case "findNext": FindController.shared.next()
+        case "findPrevious": FindController.shared.previous()
+        case "findClose": FindController.shared.hide()
+        case "page": if let page = info["page"].flatMap(Int.init) { reader.goToPage(page) }
+        case "focus": toggleFocus()
+        case "closeBook": closeBook()
+        case "section":
+            if let section = info["value"].flatMap(StudySection.init(rawValue:)) { revealStudy(); studySection = section }
+        case "navigator", "reveal":
+            if let section = info["value"].flatMap(NavigatorSection.init(rawValue:)) { reveal(section) }
+        case "panel":
+            if let tab = info["value"].flatMap(PanelTab.init(rawValue:)) { panelTab = tab; showPanel = true } else { togglePanel() }
+        case "consoleRun":
+            guard let code = info["code"] else { throw QAHooks.QAError.missing("code") }
+            submitConsole(code)
+        case "palette":
+            let mode: PaletteMode = info["mode"] == "commands" ? .commands : info["mode"] == "symbols" ? .symbols : info["mode"] == "themes" ? .themes : .goTo
+            showPalette(mode, text: info["text"] ?? "")
+        case "paletteClose": closePalette()
+        case "goto":
+            let items = PaletteProvider(store: self).items(mode: .goTo, query: info["query"] ?? "")
+            guard let item = items.first else { throw QAHooks.QAError.missing("result for \(info["query"] ?? "")") }
+            if info["side"] == "1", let side = item.openToSide { side() } else { item.perform() }
+        case "split": toggleSplit()
+        case "references":
+            let key = ReferenceKey(kind: info["kind"].flatMap(ReferenceKind.init(rawValue:)) ?? .equation, number: info["number"] ?? "")
+            showReferences(.object(key))
+        case "index":
+            guard let entry = analysis?.analysis.flatMap({ BookIndexSearch.find(info["term"] ?? "", in: $0.index, limit: 1).first?.entry }) else { throw QAHooks.QAError.missing("index entry") }
+            openIndexEntry(entry)
+        case "peek":
+            let pageIndex = reader.pageNumber - 1
+            let kind = info["kind"].flatMap(ReferenceKind.init(rawValue:))
+            guard let mention = references?.mentions(onPage: pageIndex).first(where: { !$0.isDefinition && (kind == nil || $0.key.kind == kind) && (info["number"] == nil || $0.key.number == info["number"]) })
+            else { throw QAHooks.QAError.missing("mention on this page") }
+            peekReference(mention, pageIndex: pageIndex)
+        case "lookup": lookupDefinition(info["term"] ?? "", pageIndex: reader.pageNumber - 1, region: nil)
+        case "select":
+            // Selects the first occurrence of a phrase on the current page, as a drag would.
+            guard let page = document?.page(at: reader.pageNumber - 1), let range = StudyStore.occurrence(of: info["text"] ?? "", in: page.string ?? ""),
+                  let selection = page.selection(for: range) else { throw QAHooks.QAError.missing("text on this page") }
+            reader.view?.setCurrentSelection(selection, animate: false)
+            reader.updateSelection()
+        case "askSelection": prepareQuickAsk()
+        case let action where action.hasPrefix("assistant") || action.hasPrefix("questionSheet"): try await performAssistantQA(action, info: info)
+        case "dismiss": referencePeek = nil; definitionLookup = nil; quickAsk = nil; palette = nil
+        case "waitAnalysis":
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "90") ?? 90)
+            while analysis?.analysis == nil, Date.now < deadline { try await Task.sleep(for: .milliseconds(250)) }
+            if analysis?.analysis == nil { throw QAHooks.QAError.missing("finished analysis") }
+        case "layout":
+            if let layout = info["value"].flatMap(ReadingLayout.init(rawValue:)) { updateLayout(layout) }
+        case "fitWidth": reader.fitWidth()
+        case "appearance":
+            NSApp.appearance = info["value"] == "light" ? NSAppearance(named: .aqua) : info["value"] == "dark" ? NSAppearance(named: .darkAqua) : nil
+        case "open": if let path = info["path"] { open(URL(fileURLWithPath: path)) }
+        case "tab": if let id = tabs.first(where: { $0.title == info["title"] })?.id { activateTab(id) }
+        case "closeTab": if let id = tabs.first(where: { $0.title == info["title"] })?.id { closeTab(id) }
+        case "selectNote":
+            if let note = workspace?.notes.first(where: { $0.title == info["title"] }) { selectNote(note.id) }
+        case "sendToLab": sendSelectionToLab()
+        case "labNew": newLab(title: info["title"])
+        case "labOpen":
+            if let notebook = workspace?.labs.first(where: { $0.title == info["title"] }) ?? workspace?.labs.first { openLabNotebook(notebook.id) }
+        case "labSetCode":
+            guard let id = openLabID, let cell = lab(id)?.cells.last(where: { $0.kind == .code }) else { throw QAHooks.QAError.missing("open notebook") }
+            let code = (info["code"] ?? "").replacingOccurrences(of: "\\n", with: "\n")
+            if info["append"] == "1" { addLabCell(id, kind: info["kind"] == "text" ? .text : .code, after: lab(id)?.cells.last?.id ?? cell.id, source: code) }
+            else { updateLab(id) { notebook in if let index = notebook.cells.firstIndex(where: { $0.id == cell.id }) { notebook.cells[index].source = code } } }
+        case "labRunAll": if let id = openLabID { runAllLabCells(id) }
+        case "labWait":
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "60") ?? 60)
+            while Date.now < deadline {
+                if let id = openLabID, let session = lab.sessions[id], session.state == .idle, session.queued.isEmpty, session.runningCellID == nil { break }
+                try await Task.sleep(for: .milliseconds(200))
+            }
+        case "labClose": closeLabEditor()
+        case "labPython": lab.setPreferredInterpreter(info["path"] ?? "")
+        case "labProbe":
+            // Runs an interpreter the way discovery does and reports what happened, for diagnosis.
+            let path = info["path"] ?? ""
+            let report: String = await Task.detached {
+                let started = Date()
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = ["-I", "-c", "import sys, json; print(json.dumps({'version': sys.version.split()[0]}))"]
+                let output = Pipe(), errors = Pipe()
+                process.standardOutput = output; process.standardError = errors; process.standardInput = FileHandle.nullDevice
+                do { try process.run() } catch { return "run failed: \(error)" }
+                process.waitUntilExit()
+                let out = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let err = String(decoding: errors.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                return "status \(process.terminationStatus) in \(Date().timeIntervalSince(started)) s; out \(out); err \(err.prefix(600)); safe \(LabInterpreterFinder.isSafeToRun(path)); probe \(String(describing: LabInterpreterFinder.probe(path)))"
+            }.value
+            try report.write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "probe").txt"), atomically: true, encoding: .utf8)
+        case "labSetupShow": showPythonSetup()
+        case "labSetupClose": LabPythonSetupWindow.close()
+        case "labSetupStart":
+            await discoverPython()
+            lab.setup.start()
+        case "labSetupCancel": lab.setup.cancel()
+        case "labSetupWait":
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "600") ?? 600)
+            while lab.setup.isRunning, Date.now < deadline { try await Task.sleep(for: .milliseconds(250)) }
+        case "labPinFigure":
+            guard let id = openLabID, let name = lab(id)?.cells.flatMap(\.outputs).compactMap(\.imageName).first else { throw QAHooks.QAError.missing("figure") }
+            pinLabFigure(name, notebookID: id)
+        case "labFocus":
+            guard let id = openLabID, let cell = lab(id)?.cells.last(where: { $0.kind == .code }) else { throw QAHooks.QAError.missing("open notebook") }
+            NSApp.activate(ignoringOtherApps: true)
+            lab.requestFocus(cell.id)
+        case "renderTarget":
+            let key = ReferenceKey(kind: info["kind"].flatMap(ReferenceKind.init(rawValue:)) ?? .equation, number: info["number"] ?? "")
+            guard let target = references?.knownTarget(key), let page = document?.page(at: target.pageIndex) else { throw QAHooks.QAError.missing("target") }
+            let data = try PDFRegionRenderer.png(page: page, region: target.region, scale: 3)
+            try data.write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "target").png"))
+            let json = ["page": target.pageIndex, "region": [target.region.x, target.region.y, target.region.width, target.region.height],
+                        "anchor": [target.anchor.x, target.anchor.y, target.anchor.width, target.anchor.height]] as [String: Any]
+            try JSONSerialization.data(withJSONObject: json).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "target").json"))
+        case "markUnclear": markUnclear()
+        case "resumeMark": resumeAtFirstMark()
+        case "foldAll": toggleAllProofs()
+        case "foldProof":
+            guard let key = statementKey(info), let proof = analysis?.structure.proof(of: key) else { throw QAHooks.QAError.missing("proof") }
+            toggleProof(proof.stableID)
+        case "understood": if let key = statementKey(info) { toggleUnderstood(key) }
+        case "hierarchy":
+            if let key = statementKey(info) { showHierarchy(key, direction: info["direction"] == "usedBy" ? .usedBy : .uses) } else { showHierarchyAtFocus() }
+        case "map": if let key = statementKey(info) { showMap(for: key) } else { showMap() }
+        case "mapClose": closeMap()
+        case "goStatement": if let key = statementKey(info) { goToKey(key) }
+        case "ruler": reader.rulerMode = info["value"] != "0"
+        case "rulerMove": reader.moveRuler(by: Int(info["by"] ?? "1") ?? 1)
+        case "hoverSymbol":
+            // Shows the symbol hover for the first occurrence of a symbol on the current page.
+            guard let view = reader.view, let page = document?.page(at: reader.pageNumber - 1), let text = page.string,
+                  let range = StudyStore.occurrence(of: info["symbol"] ?? "", in: text), let rect = PageTextMap.bounds(of: range.location, on: page) else {
+                throw QAHooks.QAError.missing("symbol on this page")
+            }
+            let point = view.convert(CGPoint(x: rect.midX, y: rect.midY), from: page)
+            if let hit = view.symbolHit(at: point) { view.symbolHover.store = self; view.qaShowSymbol(hit) } else { throw QAHooks.QAError.missing("symbol definition") }
+        case "theme": if let theme = info["value"].flatMap(PageTheme.init(rawValue:)) { pageTheme = theme }
+        case "lineNumbers": reader.showLineNumbers = info["value"] != "0"
+        case "goLine":
+            if let page = info["page"].flatMap(Int.init), let line = info["line"].flatMap(Int.init) { reader.goToLine(line - 1, onPage: page - 1) }
+        case "getBook":
+            guard let book = BookCatalog.books.first(where: { $0.id == info["id"] }) else { throw QAHooks.QAError.missing("catalog book") }
+            getCatalogBook(book)
+        case "arxiv": openArxiv(info["id"] ?? "")
+        case "findPaper":
+            guard let key = referencePeek?.mention.key, let entry = analysis?.bibliographyEntry(key) else { throw QAHooks.QAError.missing("citation peek") }
+            findPaper(entry)
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "20") ?? 20)
+            while Date.now < deadline, paperLookups[entry.id] == .searching { try await Task.sleep(for: .milliseconds(200)) }
+            if case let .found(papers)? = paperLookups[entry.id] {
+                let lines = papers.map { "\($0.title) | \($0.authorLine) | \($0.year.map(String.init) ?? "") | pdf=\($0.pdfURL?.absoluteString ?? "-") | \(String(format: "%.2f", $0.confidence))" }
+                try lines.joined(separator: "\n").write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "paper").txt"), atomically: true, encoding: .utf8)
+            }
+        case "derive": deriveSelection()
+        case "derivationNew":
+            let source = (info["source"] ?? "").replacingOccurrences(of: "\\n", with: "\n")
+            newDerivation(title: info["title"], source: source.isEmpty ? nil : source)
+        case "derivationSet":
+            guard let id = openDerivationID else { throw QAHooks.QAError.missing("open derivation") }
+            // From a file, so LaTeX such as \\nabla survives.
+            let source = try info["file"].map { try String(contentsOfFile: $0, encoding: .utf8) } ?? (info["source"] ?? "").replacingOccurrences(of: "\\n", with: "\n")
+            updateDerivation(id) { $0.source = source }
+        case "derivationWait":
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "10") ?? 10)
+            while Date.now < deadline {
+                if let id = openDerivationID, derivationReports[id] != nil, derivationChecks[id] == nil { break }
+                try await Task.sleep(for: .milliseconds(150))
+            }
+            try await Task.sleep(for: .milliseconds(400))
+        case "derivationFocus":
+            guard let id = openDerivationID else { throw QAHooks.QAError.missing("open derivation") }
+            derivationFocus = (id, Int(info["line"] ?? "0") ?? 0, UUID())
+        case "problems": showProblems()
+        case "sideTab":
+            if let editor = sideEditors.first(where: { sideTitle($0) == info["title"] }) { activateSideEditor(editor.id) }
+        case "checkAnswer":
+            guard let note = workspace?.notes.first(where: { $0.title == info["title"] }) ?? currentNote else { throw QAHooks.QAError.missing("note") }
+            checkAnswerSteps(noteID: note.id)
+        case "settings": openSettingsEditor()
+        case "closeSettings": closeSpecial(.settings)
+        case "special":
+            if let editor = info["value"].flatMap(SpecialEditor.init(rawValue:)) { openSpecial(editor) }
+        case "closeSpecial":
+            if let editor = info["value"].flatMap(SpecialEditor.init(rawValue:)) { closeSpecial(editor) }
+        case "mainTab": if let id = tabs.first(where: { $0.title == info["title"] })?.id { activateMainTab(id) }
+        case "statements":
+            // Writes the statements Lemma found, with their pages and proofs, for choosing what to test.
+            let structure = analysis?.structure
+            let rows: [[String: Any]] = (structure?.statements ?? []).prefix(Int(info["limit"] ?? "400") ?? 400).map { statement in
+                var row: [String: Any] = ["title": statement.key.title, "page": statement.start.pageIndex + 1]
+                if let name = statement.title { row["name"] = name }
+                if let proof = structure?.proof(of: statement.key) { row["proof"] = [proof.start.pageIndex + 1, proof.end.pageIndex + 1, proof.lineCount] }
+                return row
+            }
+            try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "statements").json"))
+        case "debugState":
+            let rows: [String: Any] = [
+                "frames": debug?.frames.map(\.label) ?? [], "steps": debug?.steps ?? 0, "finished": debug?.finished ?? false,
+                "line": reader.rulerLine.map { [$0.pageIndex + 1, $0.index + 1, $0.count] } ?? [],
+                "scopes": debugScopes().map { ["scope": $0.scope, "variables": $0.variables.map { "\($0.name) = \($0.value) [\($0.detail)]" }] },
+                "goal": debugGoal()?.title ?? "", "breakpoints": breakpoints.count, "watch": watchExpressions.map { evaluateWatch($0).value },
+                "lineText": reader.rulerLine.map { lineText($0) } ?? "",
+                "lineRect": reader.rulerLine.map { "\($0.rect)" } ?? "",
+                "pageMentions": reader.rulerLine.map { line in (references?.mentions(onPage: line.pageIndex) ?? []).filter { !$0.isDefinition }.map { "\($0.key.title)@\($0.rects.first.map { "\(Int($0.minY))-\(Int($0.maxY))" } ?? "")" } } ?? []
+            ]
+            try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "debug").json"))
+        case "librarySearch":
+            reveal(.search)
+            librarySearch.query = info["query"] ?? ""
+            librarySearch.scope = info["scope"] == "book" ? .book : .library
+            runLibrarySearch()
+            let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "60") ?? 60)
+            try await Task.sleep(for: .milliseconds(100))
+            while librarySearch.isSearching, Date.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+            let rows = librarySearch.results.map { ["book": $0.title, "hits": $0.hits.count, "first": $0.hits.first.map { "p. \($0.pageLabel): …\($0.before.suffix(30))[\($0.match)]\($0.after.prefix(30))…" } ?? ""] as [String: Any] }
+            try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "search").json"))
+        case "openFirstHit":
+            if let hit = librarySearch.results.first(where: { $0.title == info["book"] })?.hits.first ?? librarySearch.results.first?.hits.first { openSearchHit(hit) }
+            try await Task.sleep(for: .milliseconds(700))
+        case "titlebar":
+            // The window's frame views above the content (title bar, toolbar), to check what draws over the workbench.
+            guard let window = mainWindow, let frameView = window.contentView?.superview else { throw QAHooks.QAError.missing("window") }
+            var lines = ["styleMask \(window.styleMask.rawValue) transparent \(window.titlebarAppearsTransparent) titleVisibility \(window.titleVisibility.rawValue) toolbar \(window.toolbar.map { "visible \($0.isVisible) style \(window.toolbarStyle.rawValue)" } ?? "none")"]
+            func describe(_ view: NSView, depth: Int) {
+                guard depth < 7 else { return }
+                var line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(NSStringFromRect(view.frame)) hidden \(view.isHidden) alpha \(view.alphaValue)"
+                if let effect = view as? NSVisualEffectView { line += " effect material \(effect.material.rawValue) state \(effect.state.rawValue) blending \(effect.blendingMode.rawValue)" }
+                if let color = view.layer?.backgroundColor { line += " layerBG \(color)" }
+                lines.append(line)
+                for subview in view.subviews where subview !== window.contentView { describe(subview, depth: depth + 1) }
+            }
+            describe(frameView, depth: 0)
+            try lines.joined(separator: "\n").write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "titlebar").txt"), atomically: true, encoding: .utf8)
+        case "style": ThemeManager.shared.style = WorkbenchStyle(rawValue: info["value"] ?? "") ?? .vscode
+        case "classicTheme":
+            UserDefaults.standard.set(info["value"] ?? "system", forKey: "workbench.theme")
+            if let accent = info["accent"] { UserDefaults.standard.set(accent, forKey: "workbench.accent") }
+            ThemeManager.shared.apply()
+        case "colorTheme":
+            // value=<theme id>; auto=1 follows macOS again.
+            if info["auto"] == "1" { ThemeManager.shared.autoDetect = true }
+            else if let id = info["value"] { ThemeManager.shared.autoDetect = false; ThemeManager.shared.choose(id) }
+        case "themePreview": ThemeManager.shared.preview(info["value"])
+        case "accent": ThemeManager.shared.accent = AccentOverride(rawValue: info["value"] ?? "") ?? .theme
+        case "minimap": showMinimap = info["value"] != "0"
+        case "debugStart": startDebugging()
+        case "debugStep": for _ in 0..<(Int(info["count"] ?? "1") ?? 1) { debugStepOver() }
+        case "debugBack": debugStepBack()
+        case "debugInto": debugStepInto()
+        case "debugOut": debugStepOut()
+        case "debugContinue": debugContinue()
+        case "debugRestart": debugRestart()
+        case "debugStop": stopDebugging()
+        case "breakpoint": toggleBreakpoint()
+        case "watch": addWatch(info["value"] ?? "")
+        case "testsDue": runDueTests()
+        case "testsChapter": runChapterTests()
+        case "menuProbe":
+            // The menus' anchors on screen (top-left coordinates, as the window server reports windows), and optionally
+            // one menu opened under its anchor, to check where AppKit really puts it.
+            guard let window = mainWindow, let content = window.contentView, let screen = NSScreen.screens.first else { throw QAHooks.QAError.missing("window") }
+            func anchors(_ view: NSView) -> [NSView] { (view.identifier == MenuAnchorView.identifier ? [view] : []) + view.subviews.flatMap(anchors) }
+            let found = anchors(content).filter { !$0.isHiddenOrHasHiddenAncestor && $0.bounds.width > 0 }
+            let rows: [[String: Double]] = found.map { anchor in
+                let rect = window.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+                return ["x": rect.minX, "y": screen.frame.height - rect.maxY, "width": rect.width, "height": rect.height]
+            }
+            try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "menus").json"))
+            if let index = info["open"].flatMap(Int.init), found.indices.contains(index) {
+                let anchor = found[index]
+                let placement = (anchor as? MenuAnchorView.AnchorView)?.placement ?? .below
+                DispatchQueue.main.async { NativeMenu.show([.action("Probe One") {}, .action("Probe Two") {}], under: anchor, placement: placement) }
+            }
+        case "commands":
+            // Every command the palette offers now, for a smoke test that runs them one by one.
+            let titles = commandCatalog().map(\.title)
+            try JSONSerialization.data(withJSONObject: titles, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "commands").json"))
+        case "runCommand":
+            guard let title = info["title"], let item = commandCatalog().first(where: { $0.title == title }) else { throw QAHooks.QAError.missing("command \(info["title"] ?? "")") }
+            let before = Set(notifications.map(\.id))
+            item.perform()
+            try await Task.sleep(for: .milliseconds(Int(info["wait"] ?? "") ?? 400))
+            let added = notifications.filter { !before.contains($0.id) }.map { ["severity": "\($0.severity)", "message": $0.message] }
+            let result: [String: Any] = ["title": title, "notifications": added, "error": error ?? "", "special": activeSpecial?.rawValue ?? "",
+                                         "palette": palette != nil, "sheets": [showShortcuts, showReleaseNotes, showCustomization].map { $0 ? 1 : 0 }]
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "command").json"))
+        case "notify": notify(info["message"] ?? "Hello from QA", severity: info["severity"] == "error" ? .error : info["severity"] == "warning" ? .warning : .info)
+        case "notifications": showNotificationCenter = info["value"] != "0"
+        case "panelMax": showPanel = true; panelMaximized = info["value"] != "0"
+        case "pane": paneExpanded[info["key"] ?? ""] = info["value"] != "0"
+        case "openSide": if let book = library.first(where: { $0.title == info["title"] }) { openBookToTheSide(book.id) }
+        case "closeMarginNote": dismissMarginNote()
+        case "lineFlip":
+            // Profiling: moves the status bar's line `count` times, every 30 ms.
+            for _ in 0..<(Int(info["count"] ?? "") ?? 100) {
+                reader.qaStepLine()
+                try await Task.sleep(for: .milliseconds(30))
+            }
+        case "focusFlip":
+            // Profiling: flips the published statement (breadcrumbs and sticky header) `count` times, every 30 ms.
+            // mode=swap keeps the header shown and changes its text (proof or statement), as reading on does.
+            let original = reader.focusStatement
+            let other = original.map { ReadingStatement(statement: $0.statement, inProof: !$0.inProof, headVisible: false) }
+            for step in 0..<(Int(info["count"] ?? "") ?? 100) {
+                reader.focusStatement = step % 2 == 0 ? (info["mode"] == "swap" ? other : nil) : original
+                try await Task.sleep(for: .milliseconds(30))
+            }
+            reader.focusStatement = original
+        case "windowOrder":
+            // front: the reader's window over the others without activating Lemma (it takes no keyboard focus); back: behind them.
+            if info["value"] == "back" { mainWindow?.orderBack(nil) } else { mainWindow?.orderFrontRegardless() }
+        case "symbolSweep":
+            // Hit-tests a grid over the visible area with and without the word prefilter; writes how many hits differ.
+            guard let view = reader.view else { throw QAHooks.QAError.missing("reader") }
+            var hits = 0, mismatches = 0, points = 0
+            let step = CGFloat(Double(info["step"] ?? "") ?? 6)
+            var y = view.bounds.minY
+            while y < view.bounds.maxY {
+                var x = view.bounds.minX
+                while x < view.bounds.maxX {
+                    let fast = view.symbolHit(at: CGPoint(x: x, y: y)), slow = view.symbolHit(at: CGPoint(x: x, y: y), prefilter: false)
+                    points += 1; if slow != nil { hits += 1 }; if fast != slow { mismatches += 1 }
+                    x += step
+                }
+                y += step
+            }
+            try "points \(points) hits \(hits) mismatches \(mismatches)".write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "sweep").txt"), atomically: true, encoding: .utf8)
+        case "zoom":
+            // value=<scale factor>, or fit=width|page.
+            if info["fit"] == "width" { reader.fitWidth() } else if info["fit"] == "page" { reader.fit() }
+            else if let value = info["value"].flatMap(Double.init) { reader.view?.autoScales = false; reader.view?.scaleFactor = CGFloat(value) }
+        case "hoverReference":
+            guard reader.view?.qaHoverReference(Int(info["index"] ?? "") ?? 0) == true else { throw QAHooks.QAError.missing("reference on screen") }
+        case "inkStroke":
+            // Draws a wavy stroke across the current page (synthesized events sent straight to the reader, not the system).
+            guard let view = reader.view, let page = document?.page(at: reader.pageNumber - 1) else { throw QAHooks.QAError.missing("page") }
+            let box = page.bounds(for: .cropBox)
+            let height: CGFloat = box.height * CGFloat(Double(info["y"] ?? "") ?? 0.5)
+            let y: CGFloat = box.minY + height
+            reader.inkMode = true
+            var points: [CGPoint] = []
+            for step in 0...40 {
+                let t = CGFloat(step) / 40
+                points.append(CGPoint(x: box.minX + box.width * (0.2 + 0.6 * t), y: y + 12 * sin(CGFloat(step) / 3)))
+            }
+            view.qaDrag(onPage: reader.pageNumber - 1, through: points)
+            if info["keep"] != "1" { reader.inkMode = false }
+        case "regionCapture":
+            // Captures a region of the current page given in page points (x, y, w, h), as a drag in region mode would.
+            guard let view = reader.view else { throw QAHooks.QAError.missing("reader") }
+            let x = Double(info["x"] ?? "") ?? 72, y = Double(info["y"] ?? "") ?? 400, w = Double(info["w"] ?? "") ?? 200, h = Double(info["h"] ?? "") ?? 80
+            reader.regionMode = true
+            view.qaDrag(onPage: reader.pageNumber - 1, through: [CGPoint(x: x, y: y + h), CGPoint(x: x + w / 2, y: y + h / 2), CGPoint(x: x + w, y: y)])
+        case "scrollBench":
+            // Scrolls the reader through `pages` pages at `fps` (step points per frame) and writes <name>.json (see QAPerf).
+            guard let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("QA folder") }
+            try await QAPerf.scrollBench(store: self, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "scrollBench").json"))
+        case "inspector": showStudy = info["value"] != "0"
+        case "sidebar": showLibrary = info["value"] != "0"
+        default:
+            if try await performLibraryQA(action, info: info) { break }
+            throw QAHooks.QAError.missing("action \(action)")
+        }
+    }
+}

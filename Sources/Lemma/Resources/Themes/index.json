@@ -1,0 +1,695 @@
+[
+ {
+  "id": "lemma-dark",
+  "label": "Lemma Dark",
+  "kind": "dark",
+  "file": "lemma-dark.json",
+  "group": "Lemma",
+  "author": "Lemma",
+  "license": "Lemma"
+ },
+ {
+  "id": "lemma-light",
+  "label": "Lemma Light",
+  "kind": "light",
+  "file": "lemma-light.json",
+  "group": "Lemma",
+  "author": "Lemma",
+  "license": "Lemma"
+ },
+ {
+  "id": "lemma-midnight",
+  "label": "Lemma Midnight",
+  "kind": "dark",
+  "file": "lemma-midnight.json",
+  "group": "Lemma",
+  "author": "Lemma",
+  "license": "Lemma"
+ },
+ {
+  "id": "lemma-paper",
+  "label": "Lemma Paper",
+  "kind": "light",
+  "file": "lemma-paper.json",
+  "group": "Lemma",
+  "author": "Lemma",
+  "license": "Lemma"
+ },
+ {
+  "id": "lemma-graphite",
+  "label": "Lemma Graphite",
+  "kind": "dark",
+  "file": "lemma-graphite.json",
+  "group": "Lemma",
+  "author": "Lemma",
+  "license": "Lemma"
+ },
+ {
+  "id": "dark-2026",
+  "label": "Dark 2026",
+  "kind": "dark",
+  "file": "dark-2026.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "light-2026",
+  "label": "Light 2026",
+  "kind": "light",
+  "file": "light-2026.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "dark-modern",
+  "label": "Dark Modern",
+  "kind": "dark",
+  "file": "dark-modern.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "light-modern",
+  "label": "Light Modern",
+  "kind": "light",
+  "file": "light-modern.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "dark-plus",
+  "label": "Dark+",
+  "kind": "dark",
+  "file": "dark-plus.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "light-plus",
+  "label": "Light+",
+  "kind": "light",
+  "file": "light-plus.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "dark-vs",
+  "label": "Dark (Visual Studio)",
+  "kind": "dark",
+  "file": "dark-vs.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "light-vs",
+  "label": "Light (Visual Studio)",
+  "kind": "light",
+  "file": "light-vs.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "hc-black",
+  "label": "Dark High Contrast",
+  "kind": "hcDark",
+  "file": "hc-black.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "hc-light",
+  "label": "Light High Contrast",
+  "kind": "hcLight",
+  "file": "hc-light.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "abyss",
+  "label": "Abyss",
+  "kind": "dark",
+  "file": "abyss.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "kimbie-dark",
+  "label": "Kimbie Dark",
+  "kind": "dark",
+  "file": "kimbie-dark.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "monokai",
+  "label": "Monokai",
+  "kind": "dark",
+  "file": "monokai.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "monokai-dimmed",
+  "label": "Monokai Dimmed",
+  "kind": "dark",
+  "file": "monokai-dimmed.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "quiet-light",
+  "label": "Quiet Light",
+  "kind": "light",
+  "file": "quiet-light.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "red",
+  "label": "Red",
+  "kind": "dark",
+  "file": "red.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "solarized-dark",
+  "label": "Solarized Dark",
+  "kind": "dark",
+  "file": "solarized-dark.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "solarized-light",
+  "label": "Solarized Light",
+  "kind": "light",
+  "file": "solarized-light.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "tomorrow-night-blue",
+  "label": "Tomorrow Night Blue",
+  "kind": "dark",
+  "file": "tomorrow-night-blue.json",
+  "group": "VS Code",
+  "license": "MIT"
+ },
+ {
+  "id": "andromeeda",
+  "label": "Andromeeda",
+  "kind": "dark",
+  "file": "andromeeda.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "ayu-dark",
+  "label": "Ayu Dark",
+  "kind": "dark",
+  "file": "ayu-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "ayu-light",
+  "label": "Ayu Light",
+  "kind": "light",
+  "file": "ayu-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "ayu-mirage",
+  "label": "Ayu Mirage",
+  "kind": "dark",
+  "file": "ayu-mirage.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "catppuccin-frappe",
+  "label": "Catppuccin Frappé",
+  "kind": "dark",
+  "file": "catppuccin-frappe.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "catppuccin-latte",
+  "label": "Catppuccin Latte",
+  "kind": "light",
+  "file": "catppuccin-latte.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "catppuccin-macchiato",
+  "label": "Catppuccin Macchiato",
+  "kind": "dark",
+  "file": "catppuccin-macchiato.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "catppuccin-mocha",
+  "label": "Catppuccin Mocha",
+  "kind": "dark",
+  "file": "catppuccin-mocha.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "dracula",
+  "label": "Dracula Theme",
+  "kind": "dark",
+  "file": "dracula.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "dracula-soft",
+  "label": "Dracula Theme Soft",
+  "kind": "dark",
+  "file": "dracula-soft.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "everforest-dark",
+  "label": "Everforest Dark",
+  "kind": "dark",
+  "file": "everforest-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "everforest-light",
+  "label": "Everforest Light",
+  "kind": "light",
+  "file": "everforest-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-dark",
+  "label": "GitHub Dark",
+  "kind": "dark",
+  "file": "github-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-dark-default",
+  "label": "GitHub Dark Default",
+  "kind": "dark",
+  "file": "github-dark-default.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-dark-dimmed",
+  "label": "GitHub Dark Dimmed",
+  "kind": "dark",
+  "file": "github-dark-dimmed.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-dark-high-contrast",
+  "label": "GitHub Dark High Contrast",
+  "kind": "hcDark",
+  "file": "github-dark-high-contrast.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-light",
+  "label": "GitHub Light",
+  "kind": "light",
+  "file": "github-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-light-default",
+  "label": "GitHub Light Default",
+  "kind": "light",
+  "file": "github-light-default.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "github-light-high-contrast",
+  "label": "GitHub Light High Contrast",
+  "kind": "hcLight",
+  "file": "github-light-high-contrast.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-dark-hard",
+  "label": "Gruvbox Dark Hard",
+  "kind": "dark",
+  "file": "gruvbox-dark-hard.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-dark-medium",
+  "label": "Gruvbox Dark Medium",
+  "kind": "dark",
+  "file": "gruvbox-dark-medium.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-dark-soft",
+  "label": "Gruvbox Dark Soft",
+  "kind": "dark",
+  "file": "gruvbox-dark-soft.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-light-hard",
+  "label": "Gruvbox Light Hard",
+  "kind": "light",
+  "file": "gruvbox-light-hard.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-light-medium",
+  "label": "Gruvbox Light Medium",
+  "kind": "light",
+  "file": "gruvbox-light-medium.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "gruvbox-light-soft",
+  "label": "Gruvbox Light Soft",
+  "kind": "light",
+  "file": "gruvbox-light-soft.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "horizon",
+  "label": "Horizon",
+  "kind": "dark",
+  "file": "horizon.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "horizon-bright",
+  "label": "Horizon Bright",
+  "kind": "light",
+  "file": "horizon-bright.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "houston",
+  "label": "Houston",
+  "kind": "dark",
+  "file": "houston.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "kanagawa-dragon",
+  "label": "Kanagawa Dragon",
+  "kind": "dark",
+  "file": "kanagawa-dragon.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "kanagawa-lotus",
+  "label": "Kanagawa Lotus",
+  "kind": "light",
+  "file": "kanagawa-lotus.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "kanagawa-wave",
+  "label": "Kanagawa Wave",
+  "kind": "dark",
+  "file": "kanagawa-wave.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "laserwave",
+  "label": "LaserWave",
+  "kind": "dark",
+  "file": "laserwave.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "material-theme",
+  "label": "Material Theme",
+  "kind": "dark",
+  "file": "material-theme.json",
+  "group": "Community",
+  "license": "Apache-2.0"
+ },
+ {
+  "id": "material-theme-darker",
+  "label": "Material Theme Darker",
+  "kind": "dark",
+  "file": "material-theme-darker.json",
+  "group": "Community",
+  "license": "Apache-2.0"
+ },
+ {
+  "id": "material-theme-lighter",
+  "label": "Material Theme Lighter",
+  "kind": "light",
+  "file": "material-theme-lighter.json",
+  "group": "Community",
+  "license": "Apache-2.0"
+ },
+ {
+  "id": "material-theme-ocean",
+  "label": "Material Theme Ocean",
+  "kind": "dark",
+  "file": "material-theme-ocean.json",
+  "group": "Community",
+  "license": "Apache-2.0"
+ },
+ {
+  "id": "material-theme-palenight",
+  "label": "Material Theme Palenight",
+  "kind": "dark",
+  "file": "material-theme-palenight.json",
+  "group": "Community",
+  "license": "Apache-2.0"
+ },
+ {
+  "id": "min-dark",
+  "label": "Min Dark",
+  "kind": "dark",
+  "file": "min-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "min-light",
+  "label": "Min Light",
+  "kind": "light",
+  "file": "min-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "moonlight",
+  "label": "Moonlight",
+  "kind": "dark",
+  "file": "moonlight.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "moonlight-ii",
+  "label": "Moonlight II",
+  "kind": "dark",
+  "file": "moonlight-ii.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "moonlight-ii-italic",
+  "label": "Moonlight II Italic",
+  "kind": "dark",
+  "file": "moonlight-ii-italic.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "moonlight-italic",
+  "label": "Moonlight Italic",
+  "kind": "dark",
+  "file": "moonlight-italic.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "night-owl",
+  "label": "Night Owl",
+  "kind": "dark",
+  "file": "night-owl.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "night-owl-light",
+  "label": "Night Owl Light",
+  "kind": "light",
+  "file": "night-owl-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "nord",
+  "label": "Nord",
+  "kind": "dark",
+  "file": "nord.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "one-dark-pro",
+  "label": "One Dark Pro",
+  "kind": "dark",
+  "file": "one-dark-pro.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "one-light",
+  "label": "One Light",
+  "kind": "light",
+  "file": "one-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "plastic",
+  "label": "Plastic",
+  "kind": "dark",
+  "file": "plastic.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "poimandres",
+  "label": "Poimandres",
+  "kind": "dark",
+  "file": "poimandres.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "rose-pine",
+  "label": "Rosé Pine",
+  "kind": "dark",
+  "file": "rose-pine.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "rose-pine-dawn",
+  "label": "Rosé Pine Dawn",
+  "kind": "light",
+  "file": "rose-pine-dawn.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "rose-pine-moon",
+  "label": "Rosé Pine Moon",
+  "kind": "dark",
+  "file": "rose-pine-moon.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "slack-dark",
+  "label": "Slack Dark",
+  "kind": "dark",
+  "file": "slack-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "slack-ochin",
+  "label": "Slack Ochin",
+  "kind": "light",
+  "file": "slack-ochin.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "snazzy-light",
+  "label": "Snazzy Light",
+  "kind": "light",
+  "file": "snazzy-light.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "synthwave-84",
+  "label": "SynthWave '84",
+  "kind": "dark",
+  "file": "synthwave-84.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "tokyo-night",
+  "label": "Tokyo Night",
+  "kind": "dark",
+  "file": "tokyo-night.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "vesper",
+  "label": "Vesper",
+  "kind": "dark",
+  "file": "vesper.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "vitesse-black",
+  "label": "Vitesse Black",
+  "kind": "dark",
+  "file": "vitesse-black.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "vitesse-dark",
+  "label": "Vitesse Dark",
+  "kind": "dark",
+  "file": "vitesse-dark.json",
+  "group": "Community",
+  "license": "MIT"
+ },
+ {
+  "id": "vitesse-light",
+  "label": "Vitesse Light",
+  "kind": "light",
+  "file": "vitesse-light.json",
+  "group": "Community",
+  "license": "MIT"
+ }
+]

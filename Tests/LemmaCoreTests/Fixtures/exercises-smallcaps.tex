@@ -1,0 +1,51 @@
+% Fixture: statement heads in lower-case small capitals followed by a title in parentheses (no period), an exercise
+% section whose items carry only their number and start past 1, a solution mark before an exercise head, and a table
+% of contents listing an “Exercises” section. Compile with: tectonic exercises-smallcaps.tex
+\documentclass[11pt]{book}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[paperwidth=6in,paperheight=8.5in,margin=0.8in]{geometry}
+\usepackage[bookmarks=true,hidelinks]{hyperref}
+\newtheoremstyle{smallcaps}{12pt}{12pt}{\itshape}{}{\scshape}{}{ }{\thmname{#1}\thmnumber{ #2}\thmnote{ (#3)}}
+\theoremstyle{smallcaps}
+\newtheorem{definition}{definition}[chapter]
+\newtheorem{lemma}[definition]{lemma}
+\begin{document}
+\frontmatter
+\tableofcontents
+\mainmatter
+\chapter{Boosting}
+\section{Weak learners}
+A learner that does slightly better than chance is the starting point of boosting. The definition below makes this
+precise; the lemma after it is used throughout the chapter.
+\begin{definition}[Weak learnability]
+A learning algorithm is a weak learner for a class if, for every distribution, it returns with high probability a
+hypothesis whose error is at most one half minus a fixed margin.
+\end{definition}
+\begin{lemma}[Margin]
+Every weak learner for a class of finite dimension has a margin bounded below by a constant.
+\end{lemma}
+\section{Boosting the weak learner}
+By Definition 1.1 and Lemma 1.2, reweighting the sample after each round increases the weight of the points that the
+current hypothesis misclassifies. As Exercise 1.3.5 shows, the training error then decreases exponentially fast, and
+Exercise 1.3.4 asks for the number of rounds needed to reach a given error. These two exercises are the core of the
+chapter; the others extend them.
+\section{Exercises}
+\noindent\textbf{1.3.4.} Show that the weak learner of Definition 1.1 can be boosted to any accuracy by running it
+on reweighted samples, and count the rounds needed for a given error.\par\medskip
+\noindent\textbf{1.3.5.} Prove that the training error of the combined hypothesis decreases exponentially fast in the
+number of rounds, using Lemma 1.2 for the margin.\par\medskip
+\noindent\textbf{1.3.6.} Let the margin of Lemma 1.2 shrink with the sample size. Find how many rounds are then
+needed, and compare with Exercise 1.3.4.\par\medskip
+\noindent\textbf{1.3.7.} Give a class with no weak learner.\par
+\chapter{Margins}
+\section{Margin bounds}
+The margin of the combined hypothesis controls its error on new data, as the following exercise asks to show; see
+also Exercise 2.1 for a direct argument.
+
+\medskip
+\noindent$\triangleleft$\ \textbf{Exercise 2.1.}[2] Prove that a large margin on the sample implies a small error
+on new data, with a bound that does not depend on the number of rounds.\par\medskip
+The solution uses only Definition 1.1 and the bound of Lemma 1.2.
+\section{Further remarks}
+Margins also explain why boosting rarely overfits, a question that Exercise 2.1 settles in the simplest case.
+\end{document}

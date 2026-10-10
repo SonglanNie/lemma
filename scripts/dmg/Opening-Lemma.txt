@@ -1,0 +1,16 @@
+Opening Lemma the first time
+============================
+
+This copy of Lemma is free and open source, but it is not yet notarized by Apple (that needs a paid
+developer membership). The first time you open it, macOS says it "cannot verify" Lemma. To open it anyway:
+
+1. Drag Lemma into Applications, then double-click it once. macOS shows its warning: click Done.
+2. Open System Settings > Privacy & Security, scroll down to "Lemma was blocked to protect your Mac",
+   and click Open Anyway. Confirm with your password or Touch ID.
+3. Click Open in the last dialog. From then on Lemma opens like any other app.
+
+Or, in Terminal:
+
+    xattr -dr com.apple.quarantine /Applications/Lemma.app
+
+You can check the source and build Lemma yourself: https://github.com/fus3r/lemma

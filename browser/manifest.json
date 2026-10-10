@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Lemma \u2014 reading companion",
+  "version": "0.2.0",
+  "description": "Add arXiv papers to Lemma, prepare source crops in ChatGPT, and save requested explanations beside their notes.",
+  "permissions": [
+    "nativeMessaging",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*"
+      ],
+      "js": [
+        "dom.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Add this arXiv paper to Lemma"
+  }
+}

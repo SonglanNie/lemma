@@ -1,0 +1,8 @@
+@vscode/codicons 0.0.46-42
+source: https://registry.npmjs.org/@vscode/codicons/-/codicons-0.0.46-42.tgz (published 2026-09-29, npm dist-tag "next"; newest published version)
+npm dist-tag "latest" still points to the older 0.0.46-24 (2026-07-23).
+microsoft/vscode main (6ac40e9, 2026-10-02) pins 0.0.46-40 in package-lock.json; 0.0.46-40 and 0.0.46-42 have a byte-identical dist/codicon.ttf
+(sha256 77f902557231f95c4c71ae517d09a1a842753656f5f665086b3e5ad8095538da) and the same 762-name mapping, which also matches
+src/vs/base/common/codiconsLibrary.ts on main.
+files: codicon.ttf = dist/codicon.ttf; mapping.json = name -> hex codepoint parsed from dist/codicon.css (aliases included; 762 names, 655 codepoints);
+metadata.json = dist/metadata.json (tags/category/description per icon); LICENSE = CC-BY-4.0 (icons/font); LICENSE-CODE = MIT (code); package.json = package manifest.

@@ -1,0 +1,281 @@
+% Lemma's sample book: a short, self-contained text written to show what Lemma does with a mathematical PDF
+% (numbered statements and equations that cite each other, proofs, a figure, author-year citations with a
+% bibliography, notation and a back-of-book index). Free software under the GNU GPL v3, as Lemma.
+% Compile with: tectonic least-squares.tex
+\RequirePackage{fix-cm}
+\documentclass[11pt,oneside,openany]{book}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[paperwidth=6in,paperheight=9in,margin=0.75in,bindingoffset=0in]{geometry}
+\usepackage[authoryear,round]{natbib}
+\usepackage{makeidx}
+\usepackage{tikz}
+\usepackage[bookmarks=true,hidelinks,pdftitle={Least Squares in Twelve Pages},pdfauthor={The Lemma authors}]{hyperref}
+\makeindex
+% Lemma's colours, as in its icon: olive, cream paper and the lime accent.
+\definecolor{lemmaolive}{HTML}{6E7A26}
+\definecolor{lemmaolivedark}{HTML}{2D3410}
+\definecolor{lemmacream}{HTML}{FBF8EE}
+\definecolor{lemmalime}{HTML}{C5D467}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{exercise}{Exercise}[chapter]
+\numberwithin{equation}{chapter}
+\DeclareMathOperator{\trace}{trace}
+\DeclareMathOperator{\col}{col}
+\DeclareMathOperator{\df}{df}
+\begin{document}
+\frontmatter
+\title{Least Squares in Twelve Pages}
+\author{The Lemma authors}
+\date{A sample book for Lemma}
+% A cover in the style of the covers Lemma draws for its catalog of free books.
+{\hypersetup{pageanchor=false}
+\begin{titlepage}
+\begin{tikzpicture}[remember picture, overlay]
+  \shade[top color=lemmaolive, bottom color=lemmaolivedark] (current page.south west) rectangle (current page.north east);
+  \node[anchor=south east, inner sep=0pt, text=lemmacream, opacity=0.13]
+    at ([xshift=0.55in, yshift=-0.3in]current page.south east) {\scalebox{30}{$\lambda$}};
+  \fill[lemmacream, opacity=0.85] ([yshift=-5.74in]current page.north west) rectangle ([yshift=-5.79in]current page.north east);
+  \node[anchor=north west, inner sep=0pt, text=lemmalime, font=\sffamily\bfseries\small]
+    at ([xshift=0.75in, yshift=-0.95in]current page.north west) {LINEAR MODELS \,$\cdot$\, A SAMPLE BOOK FOR LEMMA};
+  \node[anchor=north west, inner sep=0pt, text width=4.5in, align=left, text=lemmacream, font=\fontsize{40}{47}\selectfont\bfseries]
+    at ([xshift=0.75in, yshift=-1.35in]current page.north west) {Least Squares\\in Twelve Pages};
+  \node[anchor=north west, inner sep=0pt, text width=4.4in, align=left, text=lemmacream, font=\Large\itshape]
+    at ([xshift=0.75in, yshift=-3.1in]current page.north west) {Projections, the normal equations\\and ridge regression};
+  \node[anchor=south west, inner sep=0pt, text=lemmacream, font=\scshape\large]
+    at ([xshift=0.75in, yshift=0.85in]current page.south west) {The Lemma authors};
+\end{tikzpicture}
+\end{titlepage}}
+\chapter*{Read this with Lemma}
+This short book is here to try Lemma on. Every numbered statement, equation and figure can be
+previewed by resting the pointer on a reference such as Theorem~\ref{thm:best} or \eqref{eq:normal},
+and peeked at by clicking it; Command-click a term such as \emph{hat matrix} to look it up. Put the reading
+line in the proof of Proposition~\ref{prop:svdfit} and press F5 to step through it. In
+Section~\ref{sec:ridge} the book says that a formula is ``easily seen'': select it and choose
+\emph{Derive} to check each step yourself.
+\tableofcontents
+\mainmatter
+
+\chapter{Projections}\label{ch:proj}
+\section{Orthogonality}
+Throughout, vectors are columns, $x^T y$ is the inner product of $x, y \in \mathbb{R}^N$ and
+$\|x\| = (x^T x)^{1/2}$ is the Euclidean norm. Two vectors are \emph{orthogonal}\index{orthogonal vectors}
+when $x^T y = 0$; for orthogonal vectors the theorem of Pythagoras reads
+\begin{equation}\label{eq:pythagoras}
+\|x + y\|^2 = \|x\|^2 + \|y\|^2 .
+\end{equation}
+Let $X$ be an $N \times p$ matrix whose columns are linearly independent, so that $p \le N$ and
+$X^T X$ is invertible. Its \emph{column space}\index{column space} $\col(X)$ is the set of vectors $X\beta$ with
+$\beta \in \mathbb{R}^p$.
+\begin{definition}\label{def:proj}
+The \emph{orthogonal projection}\index{orthogonal projection} onto $\col(X)$ is the matrix
+\begin{equation}\label{eq:hat}
+H = X (X^T X)^{-1} X^T .
+\end{equation}
+In statistics $H$ is called the \emph{hat matrix}\index{hat matrix}, because it puts the hat on $y$:
+$\hat y = H y$.
+\end{definition}
+\begin{lemma}\label{lem:idem}
+The matrix $H$ of \eqref{eq:hat} is symmetric and idempotent: $H^T = H$ and $H^2 = H$.
+\end{lemma}
+\begin{proof}
+The matrix $X^T X$ is symmetric, hence so is its inverse, and therefore $H^T = H$. Moreover
+\begin{align*}
+H^2 &= X (X^T X)^{-1} \, (X^T X) \, (X^T X)^{-1} X^T \\
+    &= X (X^T X)^{-1} X^T = H . \qedhere
+\end{align*}
+\end{proof}
+\begin{theorem}[Best approximation]\label{thm:best}
+For every $y \in \mathbb{R}^N$, the vector $H y$ is the point of $\col(X)$ closest to $y$:
+\[
+\|y - Hy\| \le \|y - v\| \quad \text{for every } v \in \col(X),
+\]
+with equality only for $v = Hy$.
+\end{theorem}
+\begin{proof}
+Let $v = X\gamma$ be a point of $\col(X)$. The residual $y - Hy$ is orthogonal to every column of $X$,
+since $X^T (y - Hy) = X^T y - X^T X (X^TX)^{-1} X^T y = 0$ by \eqref{eq:hat}. The vector $Hy - v$
+lies in $\col(X)$, so it is orthogonal to $y - Hy$, and \eqref{eq:pythagoras} gives
+\begin{equation}\label{eq:split}
+\|y - v\|^2 = \|y - Hy\|^2 + \|Hy - v\|^2 .
+\end{equation}
+The second term of \eqref{eq:split} is positive unless $v = Hy$, which proves the claim.
+\end{proof}
+Figure~\ref{fig:proj} shows the case $p = 1$: projecting onto a line.
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1.05]
+\draw[thick] (-0.3,-0.15) -- (4.6,2.3) node[right] {$\col(X)$};
+\draw[->, thick] (0,0) -- (3.0,2.6) node[above] {$y$};
+\draw[->, thick, blue!70!black] (0,0) -- (3.52,1.76) node[below right] {$Hy$};
+\draw[dashed] (3.0,2.6) -- (3.52,1.76);
+\draw (3.33,2.08) -- (3.42,1.93) -- (3.6,2.02);
+\fill (0,0) circle (1.2pt) node[below left] {$0$};
+\end{tikzpicture}
+\caption{The orthogonal projection $Hy$ of $y$ onto a line, and the residual $y - Hy$, orthogonal to the line.}\label{fig:proj}
+\end{figure}
+
+\chapter{Least squares}\label{ch:ls}
+\section{The normal equations}
+Given observations $y \in \mathbb{R}^N$ and the $N \times p$ matrix $X$ of Chapter~\ref{ch:proj}, the method of
+\emph{least squares}\index{least squares} \citep{legendre1805, gauss1809} chooses $\beta \in \mathbb{R}^p$ to minimize
+\begin{equation}\label{eq:rss}
+\operatorname{RSS}(\beta) = \|y - X\beta\|^2 = (y - X\beta)^T (y - X\beta).
+\end{equation}
+\begin{proposition}\label{prop:normal}
+A vector $\hat\beta$ minimizes \eqref{eq:rss} if and only if it solves the \emph{normal equations}\index{normal equations}
+\begin{equation}\label{eq:normal}
+X^T X \hat\beta = X^T y .
+\end{equation}
+Since $X^T X$ is invertible, the minimizer is unique:
+\begin{equation}\label{eq:betahat}
+\hat\beta = (X^T X)^{-1} X^T y .
+\end{equation}
+\end{proposition}
+\begin{proof}
+By Theorem~\ref{thm:best}, $X\hat\beta$ minimizes $\|y - X\beta\|$ exactly when $X\hat\beta = Hy$.
+Multiplying $X \hat\beta = X (X^TX)^{-1} X^T y$ on the left by $X^T$ gives \eqref{eq:normal};
+conversely, \eqref{eq:normal} gives \eqref{eq:betahat}, and then $X\hat\beta = Hy$ by \eqref{eq:hat}.
+\end{proof}
+The same equations come from calculus: the gradient of \eqref{eq:rss} is
+\begin{equation}\label{eq:gradient}
+\frac{\partial \operatorname{RSS}}{\partial \beta} = -2 X^T (y - X\beta),
+\end{equation}
+and setting it to zero gives \eqref{eq:normal}. The fitted values are $\hat y = X \hat\beta = H y$, the
+projection of Definition~\ref{def:proj}.
+
+\section{Degrees of freedom}
+\begin{definition}\label{def:df}
+The \emph{degrees of freedom}\index{degrees of freedom} of a method whose fitted values are $\hat y = S y$
+for a fixed $N \times N$ matrix $S$ is $\df(S) = \trace(S)$.
+\end{definition}
+\begin{theorem}\label{thm:dfls}
+Least squares with $p$ linearly independent columns has $p$ degrees of freedom.
+\end{theorem}
+\begin{proof}
+By Definition~\ref{def:df} and the cyclic property of the trace\index{trace},
+\begin{align}
+\trace(H) &= \trace\big(X (X^T X)^{-1} X^T\big) = \trace\big((X^T X)^{-1} X^T X\big) \nonumber \\
+           &= \trace(I_p) = p . \label{eq:trace} \qedhere
+\end{align}
+\end{proof}
+
+\section{Solving with a QR factorization}
+Forming $X^TX$ squares the condition number of the problem, so in practice \eqref{eq:normal} is
+solved through a factorization of $X$ itself \citep{golub2013, trefethen1997}.
+\begin{theorem}\label{thm:qr}
+Write $X = QR$, where $Q$ is $N \times p$ with orthonormal columns ($Q^T Q = I_p$) and $R$ is a $p \times p$
+invertible upper triangular matrix (a \emph{QR factorization}\index{QR factorization}). Then
+\begin{equation}\label{eq:qr}
+\hat\beta = R^{-1} Q^T y ,
+\end{equation}
+which is computed by back substitution in $R \hat\beta = Q^T y$.
+\end{theorem}
+\begin{proof}
+Since $Q^T Q = I_p$, we have $X^T X = R^T Q^T Q R = R^T R$ and $X^T y = R^T Q^T y$. The normal equations
+\eqref{eq:normal} become $R^T R \hat\beta = R^T Q^T y$, and multiplying by $(R^T)^{-1}$ gives $R \hat\beta = Q^T y$.
+\end{proof}
+\begin{example}\label{ex:line}
+Fitting a line $y \approx \beta_1 + \beta_2 t$ through the points $(0, 1)$, $(1, 2)$ and $(2, 4)$ uses
+\[
+X = \begin{pmatrix} 1 & 0 \\ 1 & 1 \\ 1 & 2 \end{pmatrix}, \qquad y = \begin{pmatrix} 1 \\ 2 \\ 4 \end{pmatrix},
+\]
+so that
+\[
+X^T X = \begin{pmatrix} 3 & 3 \\ 3 & 5 \end{pmatrix}, \qquad X^T y = \begin{pmatrix} 7 \\ 10 \end{pmatrix},
+\]
+and \eqref{eq:betahat} gives $\hat\beta = (5/6,\ 3/2)^T$: the line $y = 5/6 + 3t/2$.
+\end{example}
+
+\chapter{Regularization}\label{ch:reg}
+\section{Ridge regression}\label{sec:ridge}
+When the columns of $X$ are nearly dependent, $X^TX$ is nearly singular and \eqref{eq:betahat} is unstable.
+\emph{Ridge regression}\index{ridge regression} \citep{hoerl1970} adds a penalty with a parameter $\lambda > 0$:
+\begin{equation}\label{eq:ridgecrit}
+\operatorname{PRSS}(\beta) = \|y - X\beta\|^2 + \lambda \|\beta\|^2 .
+\end{equation}
+\begin{proposition}\label{prop:ridge}
+The minimizer of \eqref{eq:ridgecrit} is easily seen to be
+\begin{equation}\label{eq:ridge}
+\hat\beta_\lambda = (X^T X + \lambda I)^{-1} X^T y .
+\end{equation}
+\end{proposition}
+\begin{proof}
+As in \eqref{eq:gradient}, the gradient of \eqref{eq:ridgecrit} is $-2X^T(y - X\beta) + 2\lambda\beta$.
+It vanishes when $(X^TX + \lambda I)\beta = X^T y$, and $X^T X + \lambda I$ is invertible because
+$\lambda > 0$; the criterion is strictly convex, so this point is its minimum.
+\end{proof}
+The penalty \emph{shrinks}\index{shrinkage} the coefficients towards zero. The singular value decomposition
+shows by how much, direction by direction.
+
+\section{The singular value decomposition}
+\begin{theorem}[\citealp{eckart1936}]\label{thm:svd}
+The matrix $X$ can be written
+\begin{equation}\label{eq:svd}
+X = U D V^T ,
+\end{equation}
+where $U$ is $N \times p$ with orthonormal columns $u_1, \dots, u_p$, $V$ is a $p \times p$ orthogonal matrix and
+$D = \operatorname{diag}(d_1, \dots, d_p)$ with $d_1 \ge \dots \ge d_p > 0$, the \emph{singular values}\index{singular value decomposition} of $X$.
+\end{theorem}
+\begin{proposition}\label{prop:svdfit}
+The fitted values of ridge regression are
+\begin{equation}\label{eq:svdfit}
+X \hat\beta_\lambda = \sum_{j=1}^{p} u_j \, \frac{d_j^2}{d_j^2 + \lambda} \, u_j^T y .
+\end{equation}
+\end{proposition}
+\begin{proof}
+Substitute \eqref{eq:svd} into \eqref{eq:ridge}. Since $V^TV = I$ and $U^T U = I$,
+\begin{equation}\label{eq:svdstep}
+X^T X + \lambda I = V D^2 V^T + \lambda V V^T = V (D^2 + \lambda I) V^T .
+\end{equation}
+Hence, by \eqref{eq:svdstep} and \eqref{eq:ridge}, $\hat\beta_\lambda = V (D^2 + \lambda I)^{-1} V^T V D U^T y = V (D^2 + \lambda I)^{-1} D U^T y$.
+Then
+\[
+X \hat\beta_\lambda = U D V^T V (D^2 + \lambda I)^{-1} D U^T y = U D (D^2 + \lambda I)^{-1} D \, U^T y ,
+\]
+and since the matrices in the middle are diagonal this is \eqref{eq:svdfit}.
+\end{proof}
+\begin{corollary}\label{cor:dfridge}
+Ridge regression has
+\begin{equation}\label{eq:dfridge}
+\df(\lambda) = \sum_{j=1}^{p} \frac{d_j^2}{d_j^2 + \lambda}
+\end{equation}
+degrees of freedom. It decreases as $\lambda$ grows and tends to $p$ as $\lambda \to 0$, in agreement with Theorem~\ref{thm:dfls}.
+\end{corollary}
+\begin{proof}
+By \eqref{eq:svdfit} the fitted values are $Sy$, where $S$ is the matrix $U D (D^2 + \lambda I)^{-1} D U^T$. By
+Definition~\ref{def:df} and the cyclic property of the trace,
+\[
+\trace(S) = \trace\big(D (D^2+\lambda I)^{-1} D\big) = \sum_{j=1}^{p} \frac{d_j^2}{d_j^2 + \lambda},
+\]
+which is \eqref{eq:dfridge}. Each term decreases in $\lambda$ and tends to $1$ as $\lambda \to 0$.
+\end{proof}
+
+\section*{Exercises}
+\begin{exercise}\label{exr:augment}
+Show that \eqref{eq:ridge} is the least-squares solution \eqref{eq:betahat} for the augmented data
+$\tilde X = \begin{pmatrix} X \\ \sqrt{\lambda} I \end{pmatrix}$ and $\tilde y = \begin{pmatrix} y \\ 0 \end{pmatrix}$.
+\end{exercise}
+\begin{exercise}\label{exr:norm}
+Using \eqref{eq:svd}, show that $\|\hat\beta_\lambda\|$ decreases as $\lambda$ grows.
+\end{exercise}
+\begin{exercise}\label{exr:qrcheck}
+Verify Example~\ref{ex:line} with Theorem~\ref{thm:qr}, by computing a QR factorization of its $X$.
+\end{exercise}
+
+\begin{thebibliography}{9}
+\bibitem[Eckart and Young(1936)]{eckart1936} Eckart, C. and Young, G. (1936). The approximation of one matrix by another of lower rank. \emph{Psychometrika}, 1(3):211--218.
+\bibitem[Gauss(1809)]{gauss1809} Gauss, C. F. (1809). \emph{Theoria motus corporum coelestium in sectionibus conicis solem ambientium}. Perthes and Besser, Hamburg.
+\bibitem[Golub and Van Loan(2013)]{golub2013} Golub, G. H. and Van Loan, C. F. (2013). \emph{Matrix Computations}. Johns Hopkins University Press, 4th edition.
+\bibitem[Hoerl and Kennard(1970)]{hoerl1970} Hoerl, A. E. and Kennard, R. W. (1970). Ridge regression: biased estimation for nonorthogonal problems. \emph{Technometrics}, 12(1):55--67.
+\bibitem[Legendre(1805)]{legendre1805} Legendre, A.-M. (1805). \emph{Nouvelles m\'ethodes pour la d\'etermination des orbites des com\`etes}. Courcier, Paris.
+\bibitem[Trefethen and Bau(1997)]{trefethen1997} Trefethen, L. N. and Bau, D. (1997). \emph{Numerical Linear Algebra}. SIAM, Philadelphia.
+\end{thebibliography}
+
+\printindex
+\end{document}

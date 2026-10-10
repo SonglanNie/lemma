@@ -1,0 +1,1 @@
+{"name":"lemma-browser-checks","private":true,"scripts":{"test":"node --test browser/tests/*.test.cjs"},"devDependencies":{"dompurify":"3.4.16","jsdom":"^30.1.1","katex":"0.18.9","marked":"18.0.14"}}

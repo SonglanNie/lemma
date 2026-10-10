@@ -1,0 +1,110 @@
+% Fixture: a book with chapters, numbering within chapters, running heads, author-year citations,
+% a bibliography and a back-of-book index, with a PDF outline. Compile with: tectonic book-chapters.tex
+\documentclass[11pt]{book}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[paperwidth=6in,paperheight=8.5in,margin=0.8in]{geometry}
+\usepackage[authoryear,round]{natbib}
+\usepackage[bookmarks=true,hidelinks]{hyperref}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{exercise}{Exercise}[chapter]
+\numberwithin{equation}{chapter}
+\begin{document}
+\frontmatter
+\title{Notes on Linear Smoothers}
+\author{A. Fixture}
+\maketitle
+\tableofcontents
+\mainmatter
+\chapter{Linear Smoothers}
+\section{Least squares}
+A \emph{linear smoother} is a method whose fitted values are a linear function of the response.
+Least squares is the oldest example \citep{gauss1809}; a modern account is given by \citet{hastie2009}.
+Let $X$ be the $N\times p$ input matrix. The fitted values are
+\begin{equation}\label{eq:hat}
+\hat y = X (X^T X)^{-1} X^T y = H y ,
+\end{equation}
+where $H$ is called the \emph{hat matrix}. The matrix in \eqref{eq:hat} is a projection.
+\begin{definition}\label{def:df}
+The \emph{degrees of freedom} of a linear smoother $S$ is $\operatorname{trace}(S)$.
+\end{definition}
+\begin{lemma}\label{lem:idem}
+The hat matrix $H$ in \eqref{eq:hat} is symmetric and idempotent.
+\end{lemma}
+\begin{proof}
+Direct computation gives $H^T = H$ and $H^2 = X (X^TX)^{-1} X^T X (X^TX)^{-1} X^T = H$.
+\end{proof}
+\begin{theorem}\label{thm:df}
+The degrees of freedom of least squares, in the sense of Definition~\ref{def:df}, equals $p$.
+\end{theorem}
+\begin{proof}
+By Lemma~\ref{lem:idem} and the cyclic property of the trace,
+\begin{equation}\label{eq:trace}
+\operatorname{trace}(H) = \operatorname{trace}\big((X^TX)^{-1} X^T X\big) = \operatorname{trace}(I_p) = p .
+\end{equation}
+This completes the argument.
+\end{proof}
+\section{Smoothing splines}
+Smoothing splines minimize a penalized criterion \citep{reinsch1967, wahba1990}. Their fit is again linear in $y$, so Theorem~\ref{thm:df} generalizes through Definition~\ref{def:df}.
+\begin{equation}\label{eq:spline}
+\sum_{i=1}^{N} \{y_i - f(x_i)\}^2 + \lambda \int f''(t)^2\, dt .
+\end{equation}
+\begin{proposition}\label{prop:spline}
+The minimizer of \eqref{eq:spline} is a natural cubic spline with knots at the unique values of $x_i$.
+\end{proposition}
+\begin{proof}
+See \citet{wahba1990} for the classical argument; it uses \eqref{eq:spline} and an integration by parts.
+\end{proof}
+Figure~\ref{fig:smoother} compares the two smoothers of Section~\ref{sec:exercises}.
+\begin{figure}[h]
+\centering
+\fbox{\rule{0pt}{0.8in}\hspace{2.6in}}
+\caption{A smoothing spline and a least squares line fitted to the same data.}
+\label{fig:smoother}
+\end{figure}
+\section{Exercises}\label{sec:exercises}
+\begin{exercise}\label{ex:trace}
+Show that the trace in \eqref{eq:trace} equals the rank of $X$.
+\end{exercise}
+\begin{exercise}
+Use Proposition~\ref{prop:spline} to compute the degrees of freedom of a smoothing spline.
+\end{exercise}
+
+\chapter{Kernel Methods}
+\section{Local averaging}
+Kernel smoothers weight nearby observations \citep{nadaraya1964}. The Nadaraya--Watson estimate is
+\begin{equation}\label{eq:nw}
+\hat f(x_0) = \frac{\sum_{i=1}^{N} K_\lambda(x_0, x_i)\, y_i}{\sum_{i=1}^{N} K_\lambda(x_0, x_i)} ,
+\end{equation}
+where $K_\lambda$ is a kernel with bandwidth $\lambda$. Like \eqref{eq:hat}, it is a linear smoother.
+\begin{theorem}\label{thm:nw}
+The Nadaraya--Watson estimator \eqref{eq:nw} is a linear smoother whose degrees of freedom, as in Theorem~\ref{thm:df}, depend on $\lambda$.
+\end{theorem}
+\begin{proof}
+The weights in \eqref{eq:nw} do not depend on $y$, so by Definition~\ref{def:df} the claim follows from Lemma~\ref{lem:idem}.
+\end{proof}
+Exercise~\ref{ex:trace} in Chapter~1 is useful here. \citet{hastie2009} discuss bandwidth selection at length.
+
+\backmatter
+\bibliographystyle{plainnat}
+\begin{thebibliography}{6}
+\bibitem[Gauss(1809)]{gauss1809} Gauss, C. F. (1809). Theoria Motus Corporum Coelestium. Perthes et Besser, Hamburg.
+\bibitem[Hastie et~al.(2009)Hastie, Tibshirani, and Friedman]{hastie2009} Hastie, T., Tibshirani, R. and Friedman, J. (2009). The Elements of Statistical Learning. Springer, New York, second edition.
+\bibitem[Nadaraya(1964)]{nadaraya1964} Nadaraya, E. A. (1964). On estimating regression. Theory of Probability and its Applications, 9:141--142.
+\bibitem[Reinsch(1967)]{reinsch1967} Reinsch, C. (1967). Smoothing by spline functions. Numerische Mathematik, 10:177--183.
+\bibitem[Wahba(1990)]{wahba1990} Wahba, G. (1990). Spline Models for Observational Data. SIAM, Philadelphia.
+\end{thebibliography}
+\begin{theindex}
+\item degrees of freedom, 2, 5
+\item hat matrix, 2
+\item kernel smoother, 5
+\item linear smoother, 1, 5
+\subitem degrees of freedom, 2
+\item Nadaraya--Watson estimate, 5
+\item smoothing spline, 3--4
+\item trace, 2
+\end{theindex}
+\end{document}

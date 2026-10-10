@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened runtime with no exceptions: Lemma runs Python and the assistants' command-line tools as separate
+     processes, renders mathematics in WebKit (whose JIT lives in Apple's own processes) and loads no plug-ins. -->
+<plist version="1.0">
+<dict/>
+</plist>

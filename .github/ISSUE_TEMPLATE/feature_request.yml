@@ -1,0 +1,15 @@
+name: Idea
+description: Suggest something Lemma could do.
+labels: [idea]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to do
+      description: The reading or studying situation, and where Lemma gets in the way or falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help

@@ -1,0 +1,85 @@
+{
+  "observations" : [
+    {
+      "cropBox" : [
+        72,
+        72,
+        450,
+        648
+      ],
+      "found" : true,
+      "nativeTextUTF16Length" : 1246,
+      "pdfPageLabel" : "64",
+      "physicalPageIndex" : 63,
+      "physicalPageNumber" : 64,
+      "renderPixels" : [
+        1350,
+        1944
+      ],
+      "renderScale" : 3,
+      "selectionBounds" : [
+        133.76587999999998,
+        141.67157000000003,
+        322.78453416000002,
+        106.91894749999997
+      ],
+      "selectionLineCount" : 9,
+      "target" : "least-squares"
+    },
+    {
+      "cropBox" : [
+        72,
+        72,
+        450,
+        648
+      ],
+      "found" : true,
+      "nativeTextUTF16Length" : 1859,
+      "pdfPageLabel" : "66",
+      "physicalPageIndex" : 65,
+      "physicalPageNumber" : 66,
+      "renderPixels" : [
+        1350,
+        1944
+      ],
+      "renderScale" : 3,
+      "selectionBounds" : [
+        133.76636000000008,
+        455.85435824000001,
+        322.7822724619125,
+        162.02472175999981
+      ],
+      "selectionLineCount" : 21,
+      "target" : "covariance"
+    },
+    {
+      "cropBox" : [
+        72,
+        72,
+        450,
+        648
+      ],
+      "found" : true,
+      "nativeTextUTF16Length" : 2720,
+      "pdfPageLabel" : "83",
+      "physicalPageIndex" : 82,
+      "physicalPageNumber" : 83,
+      "renderPixels" : [
+        1350,
+        1944
+      ],
+      "renderScale" : 3,
+      "selectionBounds" : [
+        133.76659000000035,
+        368.48029999999994,
+        322.78979969424472,
+        83.069117499999948
+      ],
+      "selectionLineCount" : 7,
+      "target" : "ridge"
+    }
+  ],
+  "pageCount" : 764,
+  "scope" : "Three phrase-selected pages in one PDF; no OCR, semantic parsing, browser, or UI test.",
+  "sourceFileName" : "ESLII_print12_toc.pdf"
+}

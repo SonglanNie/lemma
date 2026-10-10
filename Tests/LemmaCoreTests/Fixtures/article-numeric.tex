@@ -1,0 +1,86 @@
+% Fixture: a single-column article with plain equation numbers, numeric citations,
+% amsthm statements and proofs, and no PDF outline. Compile with: tectonic article-numeric.tex
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=1.2in]{geometry}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\begin{document}
+\title{Shrinkage and Sparsity in Linear Models}
+\author{A. Fixture}
+\date{}
+\maketitle
+
+\section{Introduction}
+We study the linear model in which the response depends linearly on $p$ predictors.
+Least squares is the classical estimator and was analysed in detail by many authors [1, 3].
+Throughout, let $X$ denote the $N \times p$ design matrix and let $y$ denote the response vector.
+The residual sum of squares is
+\begin{equation}
+\mathrm{RSS}(\beta) = \sum_{i=1}^{N} (y_i - x_i^T \beta)^2 .
+\label{eq:rss}
+\end{equation}
+Minimizing \eqref{eq:rss} over $\beta$ gives the normal equations, which are discussed in Section~2.
+
+\section{Ridge regression}
+The ridge estimator adds a penalty to the criterion in \eqref{eq:rss}. Formally,
+\begin{equation}
+\hat\beta^{\mathrm{ridge}} = \operatorname*{argmin}_{\beta} \Big\{ \mathrm{RSS}(\beta) + \lambda \sum_{j=1}^{p} \beta_j^2 \Big\},
+\label{eq:ridge}
+\end{equation}
+where $\lambda \ge 0$ is a complexity parameter that controls the amount of shrinkage [2].
+\begin{definition}
+The \emph{effective degrees of freedom} of the ridge fit is the trace of the hat matrix.
+\end{definition}
+\begin{lemma}\label{lem:solution}
+For every $\lambda > 0$ the minimizer in \eqref{eq:ridge} is unique and equals $(X^TX + \lambda I)^{-1} X^T y$.
+\end{lemma}
+\begin{proof}
+The criterion in Eq.~\eqref{eq:ridge} is strictly convex when $\lambda > 0$, so its minimizer is unique.
+Setting the gradient to zero gives the stated formula.
+\end{proof}
+\begin{theorem}[Shrinkage]\label{thm:shrink}
+The ridge coefficients shrink towards zero as $\lambda$ grows. In particular, the norm of the estimator in Lemma~\ref{lem:solution} is a decreasing function of $\lambda$.
+\end{theorem}
+\begin{proof}
+Write the singular value decomposition $X = UDV^T$. By Lemma~\ref{lem:solution},
+\begin{equation}
+X\hat\beta^{\mathrm{ridge}} = \sum_{j=1}^{p} u_j \frac{d_j^2}{d_j^2 + \lambda} u_j^T y ,
+\label{eq:svd}
+\end{equation}
+and each factor in \eqref{eq:svd} decreases in $\lambda$, see [3, Theorem 2].
+\end{proof}
+Figure~\ref{fig:path} shows the coefficient profiles. Table~\ref{tab:df} lists degrees of freedom.
+
+\begin{figure}[h]
+\centering
+\fbox{\rule{0pt}{1.1in}\hspace{3in}}
+\caption{Profiles of ridge coefficients as the penalty $\lambda$ varies.}
+\label{fig:path}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Effective degrees of freedom for several penalties.}
+\label{tab:df}
+\begin{tabular}{cc}
+$\lambda$ & df \\ \hline
+0 & 8.0 \\
+1 & 6.2 \\
+10 & 3.1
+\end{tabular}
+\end{table}
+
+\begin{corollary}
+When the predictors are orthonormal, ridge regression rescales the least squares coefficients by $1/(1+\lambda)$, as \eqref{eq:svd} shows.
+\end{corollary}
+
+\begin{thebibliography}{9}
+\bibitem{hoerl} A. E. Hoerl and R. W. Kennard. Ridge regression: biased estimation for nonorthogonal problems. Technometrics, 12(1):55--67, 1970.
+\bibitem{tib} R. Tibshirani. Regression shrinkage and selection via the lasso. Journal of the Royal Statistical Society B, 58(1):267--288, 1996.
+\bibitem{htf} T. Hastie, R. Tibshirani, and J. Friedman. The Elements of Statistical Learning. Springer, second edition, 2009.
+\end{thebibliography}
+\end{document}

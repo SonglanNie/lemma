@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in Lemma does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for reporting. **Help › Report an Issue…** in Lemma fills in your versions for you."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open a PDF…\n2. …"
+  - type: input
+    id: book
+    attributes:
+      label: The book or paper, if it matters
+      description: A link to a freely available PDF that shows the problem, if there is one. Please don't attach copyrighted books.
+  - type: input
+    id: versions
+    attributes:
+      label: Lemma and macOS versions
+      placeholder: "Lemma 3.0.0 (37) · macOS 15.7 · MacBook Pro M4"
+    validations:
+      required: true

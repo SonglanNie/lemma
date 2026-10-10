@@ -1,0 +1,189 @@
+import AppKit
+import QuartzCore
+import PDFKit
+
+/// Performance probes for QA copies: how often SwiftUI evaluates the views that follow the reading position, and a
+/// scrolling benchmark. Counting is off except while a benchmark runs, so a probe costs one Boolean test.
+@MainActor
+enum QAPerf {
+    static private(set) var counting = false
+    static private(set) var counts: [String: Int] = [:]
+
+    /// Records one evaluation of a view's body (or another event) while a benchmark runs.
+    static func tick(_ name: String) { if counting { counts[name, default: 0] += 1 } }
+
+    /// Scrolls the main PDF view through `pages` pages, `step` points on screen per frame at `fps` frames per second,
+    /// and writes the main thread's busy time per frame (mean, p50, p95, p99, max, frames over the 120 Hz and 60 Hz
+    /// budgets), the duration of the scroll call itself and the number of body evaluations of the views that follow
+    /// the reading position.
+    ///
+    /// Method: a timer in the common run-loop modes moves the clip view as momentum scrolling does (with the scroll view's
+    /// live-scroll notifications around it, as a trackpad gesture posts them), and a run-loop
+    /// observer ordered after Core Animation's commit adds up the time from each wake-up to the next wait. A frame's
+    /// busy time is the sum over the run-loop turns between two ticks: the scroll, the notifications and async blocks
+    /// it triggers, SwiftUI updates, layout, drawing and the transaction commit (not the render server's own work).
+    static func scrollBench(store: StudyStore, info: [String: String], output: URL) async throws {
+        guard let view = store.reader.view, let document = view.document, let documentView = view.documentView,
+              let scrollView = documentView.enclosingScrollView, let current = view.currentPage else { throw QAHooks.QAError.missing("open book") }
+        let pages = Int(info["pages"] ?? "") ?? 30
+        let step = CGFloat(Double(info["step"] ?? "") ?? 24)
+        let fps = Double(info["fps"] ?? "") ?? 120
+        let clip = scrollView.contentView
+        let startIndex = document.index(for: current)
+        let endIndex = min(document.pageCount - 1, startIndex + max(1, pages))
+        guard let endPage = document.page(at: endIndex) else { throw QAHooks.QAError.missing("end page") }
+        let target = documentView.convert(view.convert(endPage.bounds(for: .cropBox), from: endPage), from: view)
+        let startY = clip.bounds.origin.y
+        let endY = documentView.isFlipped ? target.minY - 8 : target.maxY + 8 - clip.bounds.height
+        let stepInDocument = step / max(scrollView.magnification, 0.01)
+        let frameCount = max(1, Int((abs(endY - startY) / max(stepInDocument, 0.1)).rounded(.up)))
+
+        let run = ScrollBenchRun(scrollView: scrollView, startY: startY, endY: endY, frameCount: frameCount)
+        counts = [:]; counting = true
+        let started = CACurrentMediaTime()
+        await run.perform(fps: fps)
+        let wall = CACurrentMediaTime() - started
+        // PDFKit moves its current page a moment after scrolling stops; the work that follows is reported apart.
+        let settle = await run.settle(seconds: 0.4)
+        counting = false
+
+        let busy = run.busy, calls = run.calls
+        func percentile(_ values: [Double], _ p: Double) -> Double {
+            let sorted = values.sorted()
+            return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int((Double(sorted.count - 1) * p).rounded()))]
+        }
+        func rounded(_ value: Double) -> Double { (value * 1000).rounded() / 1000 }
+        func mean(_ values: [Double]) -> Double { values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count) }
+        let result: [String: Any] = [
+            "frames": busy.count, "wallSeconds": rounded(wall), "fps": fps, "stepPoints": step,
+            "pageStart": startIndex + 1, "pageEnd": document.index(for: view.currentPage ?? endPage) + 1,
+            "magnification": rounded(scrollView.magnification), "displayMode": view.displayMode.rawValue,
+            "lineNumbers": store.reader.showLineNumbers, "links": store.reader.showReferenceLinks, "counts": store.reader.showReferenceCounts,
+            "analysis": store.analysis?.analysis != nil, "minimap": store.showMinimap,
+            "busyMs": ["mean": rounded(mean(busy)), "p50": rounded(percentile(busy, 0.5)), "p95": rounded(percentile(busy, 0.95)),
+                       "p99": rounded(percentile(busy, 0.99)), "max": rounded(busy.max() ?? 0), "total": rounded(busy.reduce(0, +))],
+            "framesOver8ms": busy.filter { $0 > 1000 / 120 }.count, "framesOver16ms": busy.filter { $0 > 1000 / 60 }.count,
+            "scrollCallMs": ["mean": rounded(mean(calls)), "p95": rounded(percentile(calls, 0.95))],
+            "settleBusyMs": rounded(settle * 1000),
+            "bodies": counts,
+            // The mean busy time of frames in which each event happened, against frames without any of them.
+            "framesWith": run.eventCosts().mapValues { ["frames": $0.frames, "meanMs": rounded($0.mean)] }
+        ]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: output)
+    }
+}
+
+/// One benchmark pass: a timer that moves the clip view a step per tick and reads the busy time of the frame before.
+@MainActor
+private final class ScrollBenchRun {
+    private let scrollView: NSScrollView
+    private let startY: CGFloat, endY: CGFloat
+    private let frameCount: Int
+    private let meter = BusyMeter()
+    private var frame = 0
+    private var timer: Timer?
+    private var finished: CheckedContinuation<Void, Never>?
+    private(set) var busy: [Double] = []
+    private(set) var calls: [Double] = []
+    /// The probe counts at each tick, to attribute each frame's busy time to what happened in it.
+    private var events: [[String: Int]] = []
+    private var lastCounts: [String: Int] = [:]
+
+    init(scrollView: NSScrollView, startY: CGFloat, endY: CGFloat, frameCount: Int) {
+        self.scrollView = scrollView; self.startY = startY; self.endY = endY; self.frameCount = frameCount
+    }
+
+    func perform(fps: Double) async {
+        meter.start()
+        NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: scrollView)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            finished = continuation
+            let timer = Timer(timeInterval: 1 / fps, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+            self.timer = timer
+            RunLoop.main.add(timer, forMode: .common)
+        }
+        NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
+    }
+
+    func eventCosts() -> [String: (frames: Int, mean: Double)] {
+        var sums: [String: (Int, Double)] = [:]
+        var quiet = (0, 0.0)
+        for (frame, names) in zip(busy, events) {
+            if names.isEmpty { quiet.0 += 1; quiet.1 += frame }
+            for name in names.keys { sums[name, default: (0, 0)].0 += 1; sums[name, default: (0, 0)].1 += frame }
+        }
+        var result = sums.mapValues { (frames: $0.0, mean: $0.1 / Double(max($0.0, 1))) }
+        result["(none)"] = (quiet.0, quiet.1 / Double(max(quiet.0, 1)))
+        return result
+    }
+
+    /// Busy time after the last frame, while the reader settles.
+    func settle(seconds: Double) async -> CFTimeInterval {
+        _ = meter.take()
+        try? await Task.sleep(for: .seconds(seconds))
+        let busy = meter.take()
+        meter.stop()
+        return busy
+    }
+
+    private func tick() {
+        let previous = meter.take() * 1000
+        if frame > 0 {
+            busy.append(previous)
+            let now = QAPerf.counts
+            events.append(now.filter { $0.value != lastCounts[$0.key] }.mapValues { _ in 1 })
+            lastCounts = now
+        } else { lastCounts = QAPerf.counts }
+        guard frame < frameCount else {
+            timer?.invalidate(); timer = nil
+            finished?.resume(); finished = nil
+            return
+        }
+        frame += 1
+        let clip = scrollView.contentView
+        let y = startY + (endY - startY) * CGFloat(frame) / CGFloat(frameCount)
+        let before = CACurrentMediaTime()
+        clip.scroll(to: CGPoint(x: clip.bounds.origin.x, y: y))
+        scrollView.reflectScrolledClipView(clip)
+        NotificationCenter.default.post(name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        calls.append((CACurrentMediaTime() - before) * 1000)
+    }
+}
+
+/// Time the main thread spends between waking up and waiting again, read once per frame.
+private final class BusyMeter: @unchecked Sendable {
+    private var wake: CFTimeInterval = 0
+    private var busy: CFTimeInterval = 0
+    private var observer: CFRunLoopObserver?
+
+    func start() {
+        wake = CACurrentMediaTime(); busy = 0
+        let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue
+        // Ordered last, after Core Animation's commit observer, so a turn's busy time includes the commit.
+        let observer = CFRunLoopObserverCreateWithHandler(kCFAllocatorDefault, activities, true, CFIndex.max) { [unowned self] _, activity in
+            let now = CACurrentMediaTime()
+            if activity == .afterWaiting { self.wake = now }
+            else if self.wake > 0 { self.busy += now - self.wake; self.wake = 0 }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        self.observer = observer
+    }
+
+    func stop() {
+        guard let observer else { return }
+        CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+        CFRunLoopObserverInvalidate(observer)
+        self.observer = nil
+    }
+
+    /// Busy time since the previous call, including the turn in progress up to now.
+    func take() -> CFTimeInterval {
+        let now = CACurrentMediaTime()
+        var total = busy
+        if wake > 0 { total += now - wake; wake = now }
+        busy = 0
+        return total
+    }
+}

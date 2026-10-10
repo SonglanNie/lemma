@@ -1,0 +1,37 @@
+% Fixture: real TeX glyph positions, scripts, fraction rules, limits and matrix delimiters.
+% Rebuild with tectonic formula-layout.tex. This source is the transcription reference.
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+\pagestyle{empty}
+\begin{document}
+\section*{Formula transcription fixture}
+The formulas below are separated by ordinary prose so their reading regions can be identified.
+\begin{equation}
+\hat\beta=(X^TX+\lambda I)^{-1}X^Ty
+\end{equation}
+The residual sum of squares has indexed terms and limits on a displayed sum.
+\begin{equation}
+\mathrm{RSS}(\beta)=\sum_{i=1}^{N}(y_i-x_i^T\beta)^2
+\end{equation}
+The derivative below contains a fraction rule and a superscript inside an operator's argument.
+\begin{equation}
+\frac{\partial}{\partial x}\sin(x^2)=2x\cos(x^2)
+\end{equation}
+The entries of a two by two matrix must retain their row and column positions.
+\begin{equation}
+A=\begin{pmatrix}a&b\\c&d\end{pmatrix}
+\end{equation}
+The next expression places limits above and below an integral.
+\begin{equation}
+\int_0^\infty e^{-x}\,dx=1
+\end{equation}
+The radical's rule covers both terms of its argument.
+\begin{equation}
+r=\sqrt{x^2+y^2}
+\end{equation}
+The final expression contains a fraction nested inside another fraction.
+\begin{equation}
+f(x)=\frac{1}{1+\frac{1}{x}}
+\end{equation}
+\end{document}
