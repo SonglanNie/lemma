@@ -55,6 +55,13 @@ final class QAHooks: NSObject {
         case "state":
             let data = try JSONSerialization.data(withJSONObject: store.qaState(), options: [.prettyPrinted, .sortedKeys])
             try data.write(to: directory.appendingPathComponent("\(name).json"))
+        // Updates (a QA copy launched with LEMMA_QA_UPDATES=1): check quietly, download without asking, report.
+        case "updateCheck": Updates.shared.checkInBackground()
+        case "updateAuto": Updates.shared.automaticallyDownloads = info["value"] != "0"
+        case "updateState":
+            let state: [String: Any] = ["available": Updates.shared.isAvailable, "event": Updates.shared.lastEvent,
+                                        "version": LemmaLinks.version, "canCheck": Updates.shared.canCheck]
+            try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]).write(to: directory.appendingPathComponent("\(name).json"))
         case "open":
             guard let path = info["path"] else { throw QAError.missing("path") }
             store.open(URL(fileURLWithPath: path))

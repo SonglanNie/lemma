@@ -37,7 +37,7 @@ This build is not yet notarized by Apple, so the first time you open it macOS sa
 
 To see what Lemma does without a PDF at hand, choose **Help › Open the Sample Book**: a twelve-page book on least squares, written to show the links, the structure, the proof debugger and the derivation checker.
 
-Lemma checks for new versions only when you ask (**Lemma › Check for Updates…**), or once a day if you turn that on in Settings.
+Lemma updates itself: **Lemma › Check for Updates…** installs a new version and relaunches. It checks on its own, once a day, only if you agree (it asks once).
 
 ## Privacy
 
@@ -63,4 +63,4 @@ Found a bug or have an idea? Use **Help › Report an Issue…** in Lemma or [op
 
 ## License
 
-Lemma is free software under the [GNU General Public License, version 3](LICENSE). It bundles Codicons (CC BY 4.0), colour themes from VS Code and their community authors (MIT, Apache 2.0), KaTeX (MIT) and its fonts (SIL Open Font License 1.1), Marked (MIT) and DOMPurify (Apache 2.0); **Help › Acknowledgements** shows every licence. Free textbooks in the catalog are downloaded from their authors' or publishers' sites and remain under their own terms.
+Lemma is free software under the [GNU General Public License, version 3](LICENSE). It bundles Codicons (CC BY 4.0), colour themes from VS Code and their community authors (MIT, Apache 2.0), KaTeX (MIT) and its fonts (SIL Open Font License 1.1), Marked (MIT), DOMPurify (Apache 2.0) and Sparkle (MIT), which installs updates; **Help › Acknowledgements** shows every licence. Free textbooks in the catalog are downloaded from their authors' or publishers' sites and remain under their own terms.

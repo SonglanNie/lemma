@@ -19,14 +19,14 @@ visible_companion = bundle.parent / "Chrome Companion"
 shutil.copytree(companion, visible_companion, dirs_exist_ok=True)
 shutil.copytree(root / "Sources/Lemma/Resources/Math", bundle / "Contents/Resources/Math", dirs_exist_ok=True)
 # 2.0: VS Code colour themes (with their licences) and the codicon font (CC BY 4.0).
-for folder in ("Themes", "Codicons", "Assistant", "Sample"):
+for folder in ("Themes", "Codicons", "Assistant", "Sample", "Licenses"):
     shutil.copytree(root / "Sources/Lemma/Resources" / folder, bundle / "Contents/Resources" / folder, dirs_exist_ok=True)
 shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.0.0",
-    "CFBundleVersion": "37", "LSMinimumSystemVersion": "15.0",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.1.0",
+    "CFBundleVersion": "38", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",
@@ -39,6 +39,11 @@ info = {
     # 2.4: rows dragged inside the Library tree (between libraries, folders and sections).
     "UTExportedTypeDeclarations": [{"UTTypeIdentifier": "com.lemma.library-items", "UTTypeDescription": "Lemma Library items",
                                     "UTTypeConformsTo": ["public.data"], "UTTypeTagSpecification": {}}],
+    # 3.1: updates through Sparkle. Each GitHub release publishes the appcast beside its disk image; both are signed with
+    # the project's EdDSA key, and Sparkle asks the reader at the second launch before checking on its own (once a day).
+    "SUFeedURL": "https://github.com/fus3r/lemma/releases/latest/download/appcast.xml",
+    "SUPublicEDKey": "KoHep0rUqTengXG//fx6NTQl+51MkljJWgSssFbCNLc=",
+    "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True, "SUScheduledCheckInterval": 86400,
     # Two free books of the catalog are served over plain HTTP by their authors (their HTTPS certificates are self-signed).
     "NSAppTransportSecurity": {"NSExceptionDomains": {
         "incompleteideas.net": {"NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": True},

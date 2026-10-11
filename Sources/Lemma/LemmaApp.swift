@@ -20,7 +20,9 @@ struct LemmaApp: App {
                     store.restore(); QAHooks.installIfRequested(store: store); store.libraries.start()
                     // The first launch opens the tour, whose colour page offers the reader's VS Code theme; the offer waits for it.
                     if !TutorialCenter.shared.presentIfFirstLaunch(store) { store.offerVSCodeTheme() }
-                    UpdateChecker.shared.checkIfDue(store: store)
+                    // Sparkle in the packaged app; otherwise (a development build) the daily release check, if turned on.
+                    Updates.shared.start()
+                    if !Updates.shared.isAvailable { UpdateChecker.shared.checkIfDue(store: store) }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in store.questions.shutdown(); store.flush(); store.lab.shutdownAll() }
                 .onOpenURL { url in store.openLink(url) }
@@ -30,7 +32,7 @@ struct LemmaApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Lemma") { LemmaLinks.showAbout() }
-                Button("Check for Updates…") { Task { await UpdateChecker.shared.check(userInitiated: true) } }
+                Button("Check for Updates…") { Updates.shared.checkForUpdates(store: store) }.disabled(!Updates.shared.canCheck)
             }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { store.openSettingsEditor() }.keyboardShortcut(",")

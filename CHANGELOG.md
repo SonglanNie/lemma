@@ -2,6 +2,13 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.1.0 (October 2026)
+
+**Updates inside Lemma.** **Lemma › Check for Updates…** shows what is new in a release, installs it and relaunches Lemma: no more downloading a disk image. If you agree (Lemma asks once, at its second launch), it also checks once a day, and it can download and install an update on its own when you quit (**Settings › Updates**). Updates are signed with the project's key, so Lemma installs only versions its maintainers published.
+
+- The updating is done by Sparkle (MIT licence), listed in **Help › Acknowledgements**.
+- Your choice of a daily check in Lemma 3.0 carries over.
+
 ## 3.0.0, the first public release (October 2026)
 
 **A look of its own.** Lemma Dark and Lemma Light are the new default themes: warm graphite and paper with an olive accent, following macOS light and dark. A new icon. A new Welcome page: open a PDF, drop one, add a folder of PDFs, pick a free textbook from a shelf of covers, or continue a book where you left it. The catalog's 45 free textbooks get covers. The Lemma Tour lets new readers choose between the VS Code-style workbench and the classic Mac window. A sample book, **Least Squares in Twelve Pages**, shows what Lemma does without a PDF at hand (Help › Open the Sample Book).

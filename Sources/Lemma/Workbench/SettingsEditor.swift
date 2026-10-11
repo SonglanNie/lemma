@@ -56,9 +56,15 @@ enum SettingsRegistry {
             items.append(item)
         }
         // Updates: GitHub is contacted only when the reader asks, or once a day if this is on.
-        add(UpdateChecker.automaticKey, "Workbench", "Updates", "Check for Updates Automatically",
-            "Once a day, ask GitHub whether a newer Lemma has been released (only the request for the latest release's public details is sent). Lemma › Check for Updates… checks at once.",
-            .toggle, default: "false", SettingsRegistry.bool(UpdateChecker.automaticKey, false))
+        let updates = Updates.shared
+        add("update.automaticChecks", "Workbench", "Updates", "Check for Updates Automatically",
+            "Once a day, ask GitHub whether a newer Lemma has been released (the request carries only Lemma's and macOS's versions). Lemma › Check for Updates… checks at once and offers to install the new version and relaunch.",
+            .toggle, default: "false", ({ String(updates.automaticallyChecks) }, { updates.automaticallyChecks = $0 == "true" }))
+        if updates.isAvailable {
+            add("update.automaticDownloads", "Workbench", "Updates", "Download and Install Updates Automatically",
+                "Download a new version in the background and install it when Lemma quits, without asking (this also turns on the daily check). Off, Lemma asks before downloading.",
+                .toggle, default: "false", ({ String(updates.automaticallyDownloads) }, { updates.automaticallyDownloads = $0 == "true" }))
+        }
         // Workbench › Appearance
         add(ThemePreferences.style, "Workbench", "Appearance", "Interface Style",
             "The VS Code style lays Lemma out as VS Code lays out code: a title bar with the command center, an activity bar, tabs, a status bar, codicons and VS Code colour themes. Classic is a native macOS window (toolbar, SF Symbols, System, Light, Graphite and Midnight). Every feature is available in both.",

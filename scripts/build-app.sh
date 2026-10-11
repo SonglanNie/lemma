@@ -3,8 +3,9 @@
 # debug builds).
 #   --universal               Apple silicon and Intel in one binary (what public releases ship).
 #   LEMMA_SIGN_IDENTITY=…     a "Developer ID Application: …" identity: hardened runtime and a secure timestamp, ready
-#                             for notarization (scripts/notarize.sh). Without it the app is signed ad hoc, which runs on
-#                             this Mac and, after "Open Anyway", on others.
+#                             for notarization (scripts/notarize.sh). Another name is a self-signed certificate trusted
+#                             for code signing, which keeps one identity across releases. Without it the app is signed
+#                             ad hoc, which runs on this Mac and, after "Open Anyway", on others.
 set -eu
 cd "${0:A:h:h}"
 universal=0
@@ -27,18 +28,29 @@ for name in Lemma LemmaBrowserHost LemmaIndexer; do
   cp "$bin_dir/$name" "$bundle_path/Contents/MacOS/.$name.new"
   mv -f "$bundle_path/Contents/MacOS/.$name.new" "$bundle_path/Contents/MacOS/$name"
 done
+# Sparkle (in-app updates) in Contents/Frameworks, without the XPC services only a sandboxed app needs.
+framework="$bundle_path/Contents/Frameworks/Sparkle.framework"
+rm -rf "$framework"; mkdir -p "$bundle_path/Contents/Frameworks"
+ditto "$bin_dir/Sparkle.framework" "$framework"
+rm -rf "$framework/Versions/B/XPCServices" "$framework/XPCServices"
 swift scripts/generate-icon.swift build/Lemma.iconset
 iconutil -c icns build/Lemma.iconset -o "$bundle_path/Contents/Resources/Lemma.icns"
 python3 scripts/package-app.py "$bundle_path"
 identity=${LEMMA_SIGN_IDENTITY:--}
-if [[ $identity == - ]]; then
-  codesign --force --deep --sign - "$bundle_path"
-else
-  # Inside out, without --deep: each helper, then the app, all with the hardened runtime and a timestamp.
+if [[ $identity == "Developer ID Application:"* ]]; then
+  # Inside out, without --deep: Sparkle's helpers and framework, each helper, then the app, all with the hardened runtime
+  # and a timestamp, as notarization requires.
+  for code in "$framework/Versions/B/Autoupdate" "$framework/Versions/B/Updater.app" "$framework"; do
+    codesign --force --options runtime --timestamp --sign "$identity" "$code"
+  done
   for name in LemmaIndexer LemmaBrowserHost; do
     codesign --force --options runtime --timestamp --entitlements scripts/Lemma.entitlements --sign "$identity" "$bundle_path/Contents/MacOS/$name"
   done
   codesign --force --options runtime --timestamp --entitlements scripts/Lemma.entitlements --sign "$identity" "$bundle_path"
+else
+  # Ad hoc ("-"), or a self-signed certificate, which keeps the same identity from one release to the next (macOS then
+  # keeps the Keychain and folder permissions it gave the previous version).
+  codesign --force --deep --sign "$identity" "$bundle_path"
 fi
 codesign --verify --deep --strict "$bundle_path"
 # Notify macOS that the reused app bundle has new contents, including its icon.

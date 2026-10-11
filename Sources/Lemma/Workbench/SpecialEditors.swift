@@ -239,6 +239,11 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.1: updates inside Lemma", "cloud-download", [
+            "Lemma › Check for Updates… shows what is new and installs the new version, then relaunches. No more downloading a disk image.",
+            "If you agree (Lemma asks once), it also checks once a day; it can download and install on its own when you quit. Settings › Updates.",
+            "Updates are signed: Lemma installs only versions published by its maintainers."
+        ]),
         ("A look of its own", "symbol-color", [
             "Lemma Dark and Lemma Light, warm graphite and paper with an olive accent, follow macOS light and dark. Every VS Code theme still works, and the Classic Mac window is one setting away.",
             "A new Welcome page: open a PDF, drop one, add a folder, pick a free textbook from a shelf of covers, or continue a book where you left it.",
@@ -262,7 +267,6 @@ struct ReleaseNotesEditor: View {
         ]),
         ("Open and private", "lock", [
             "Lemma is free software under the GNU GPL v3, on GitHub. Help › Report an Issue… fills in your versions; Help › Acknowledgements lists every licence.",
-            "Lemma › Check for Updates… asks GitHub for a newer release, only when you ask, or once a day if you turn it on in Settings.",
             "New readers start with two libraries, Books and Papers; add your own folders from the Welcome page or File › New Library…."
         ]),
         ("Shortcuts that changed", "keyboard", [
@@ -280,7 +284,7 @@ struct ReleaseNotesEditor: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("What’s New in Lemma \(WelcomeEditor.version)").font(.system(size: 30, weight: .semibold, design: .serif))
                             .foregroundStyle(theme[.foreground])
-                        Text("October 2026 · the first public release").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                        Text("October 2026 · 3.1, and 3.0, the first public release").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
                     }
                 }
                 ForEach(sections, id: \.0) { section in

@@ -157,7 +157,8 @@ struct AcknowledgementsView: View {
         Entry(id: 3, title: "KaTeX", detail: "Mathematics typesetting · MIT", file: "Math/KaTeX-LICENSE.txt"),
         Entry(id: 4, title: "KaTeX fonts", detail: "SIL Open Font License 1.1", file: "Math/KaTeX-Fonts-OFL.txt"),
         Entry(id: 5, title: "Marked", detail: "Markdown · MIT", file: "Math/Marked-LICENSE.txt"),
-        Entry(id: 6, title: "DOMPurify", detail: "HTML sanitizer · Apache 2.0 or MPL 2.0", file: "Math/DOMPurify-LICENSE.txt")
+        Entry(id: 6, title: "DOMPurify", detail: "HTML sanitizer · Apache 2.0 or MPL 2.0", file: "Math/DOMPurify-LICENSE.txt"),
+        Entry(id: 8, title: "Sparkle", detail: "Software updates · MIT", file: "Licenses/Sparkle-LICENSE.txt")
     ]
 
     var body: some View {

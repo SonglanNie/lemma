@@ -19,7 +19,7 @@ Lemma reads your books on your Mac. It has no account, no analytics, no crash re
 | **Ask** (⌘K) or **Get help…** with ChatGPT Web | chatgpt.com, in a browser view inside Lemma, under your own ChatGPT account | The question you prepared: the passage you selected (text and an image of it), the context you chose (cited equations, your notation and glossary entries, the book's title and section). |
 | **Ask** with Codex or Claude Code | OpenAI or Anthropic, through the official command-line tool you installed and signed in to | The same question. |
 | **Ask** with an API key (OpenAI, Anthropic, Google Gemini) | That company's API | The same question, with your key. |
-| **Check for Updates…** (or once a day, if you turn on automatic checks) | GitHub (api.github.com) | A request for the public details of Lemma's latest release. |
+| **Check for Updates…** (or once a day, if you agreed to automatic checks) | GitHub (github.com and its download servers) | A request for the description of the latest release (its appcast), which names Lemma's and macOS's versions; the new version itself if you install it. Nothing that identifies you or your Mac. |
 | **Report an Issue…**, **Lemma on GitHub**, a book's page, a DOI, Google Scholar | Your web browser opens the page | Nothing until you submit something there yourself. |
 
 What you send to an assistant is shown before it leaves when you use **Review**, and the assistant's own terms and privacy policy apply to it. University libraries generally allow sending short excerpts of licensed books to such services, but not whole books: Lemma only ever sends the passage and context you chose.
