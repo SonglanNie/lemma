@@ -25,8 +25,8 @@ shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.1.0",
-    "CFBundleVersion": "38", "LSMinimumSystemVersion": "15.0",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.2.0",
+    "CFBundleVersion": "40", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",

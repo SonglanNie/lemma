@@ -366,11 +366,12 @@ struct StatusLabel: View {
 struct SpinningCodicon: NSViewRepresentable {
     let name: String
     var size: CGFloat = 16
+    var color: TC = .statusBarForeground
     @Environment(\.theme) private var theme
 
     func makeNSView(context: Context) -> SpinnerView { SpinnerView(frame: NSRect(x: 0, y: 0, width: size, height: size)) }
     func updateNSView(_ view: SpinnerView, context: Context) {
-        view.show(Codicons.image(name, size: size, color: theme.ns(.statusBarForeground)))
+        view.show(Codicons.image(name, size: size, color: theme.ns(color)))
     }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: SpinnerView, context: Context) -> CGSize? { CGSize(width: size, height: size) }
 

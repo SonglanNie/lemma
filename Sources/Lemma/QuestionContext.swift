@@ -99,26 +99,56 @@ extension StudyStore {
             // A selected equation contains its own label; that is the source, not a citation.
             if target.pageIndex == pageIndex, target.region.rect.intersects(region.rect) { continue }
             guard let page = document.page(at: target.pageIndex), let png = try? PDFRegionRenderer.png(page: page, region: target.region) else { continue }
-            candidates.cited.append(CitedReference(target: target, png: png, pageLabel: page.label ?? String(target.pageIndex + 1)))
+            candidates.cited.append(CitedReference(target: target, png: png, pageLabel: printedLabel(for: target.pageIndex) ?? ""))
             if candidates.cited.count >= 6 { break }
         }
         return candidates
     }
 
     func composition(note: StudyNote, style: QuestionStyle, candidates: QuestionContextCandidates, selection: ContextSelection) -> QuestionComposition {
-        var composition = QuestionComposition(bookTitle: workspace?.title ?? "", section: selection.section ? candidates.section : nil,
+        var composition = QuestionComposition(bookTitle: questionBookTitle, section: selection.section ? candidates.section : nil,
                                               note: note, sourceText: selection.sourceText ? candidates.sourceText : nil, style: style)
+        composition.bookAuthors = bookAuthors
+        // Printed numbers come from the book's analysis or the PDF's labels; none means the PDF's numbering is the book's.
+        composition.printedPage = printedLabel(for: note.anchor.pageIndex) ?? ""
         composition.cited = candidates.cited.filter { selection.cited.contains($0.id) }.map {
             .init(title: $0.target.key.spokenTitle, pageIndex: $0.target.pageIndex, pageLabel: $0.pageLabel)
         }
         composition.glossary = candidates.glossary.filter { selection.glossary.contains($0.id) }.map(QuestionComposition.GlossaryEntry.init)
         composition.linked = candidates.links.filter { selection.links.contains($0.id) }.map {
-            .init(title: "\($0.link.kind.label): \($0.note.title)", pageIndex: $0.note.anchor.pageIndex, pageLabel: $0.note.anchor.pageLabel, note: $0.link.usage)
+            .init(title: "\($0.link.kind.label): \($0.note.title)", pageIndex: $0.note.anchor.pageIndex,
+                  pageLabel: printedLabel(for: $0.note.anchor.pageIndex) ?? "", note: $0.link.usage)
         }
         composition.pins = candidates.pins.filter { selection.pins.contains($0.id) }.map {
-            .init(title: $0.label, pageIndex: $0.anchor.pageIndex, pageLabel: $0.anchor.pageLabel)
+            .init(title: $0.label, pageIndex: $0.anchor.pageIndex, pageLabel: printedLabel(for: $0.anchor.pageIndex) ?? "")
         }
         return composition
+    }
+
+    /// The book as a question names it: its title in Lemma, without a file extension, and the title in the PDF's
+    /// metadata when that says more (“ISLP (An Introduction to Statistical Learning)”).
+    var questionBookTitle: String {
+        guard let workspace else { return "" }
+        var title = workspace.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title.lowercased().hasSuffix(".pdf") { title = String(title.dropLast(4)) }
+        let metadata = DocumentTitle.fromMetadata(document?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String,
+                                                  fileName: URL(fileURLWithPath: workspace.sourcePath).lastPathComponent)
+        if let metadata, metadata.range(of: title, options: [.caseInsensitive, .diacriticInsensitive]) == nil,
+           title.range(of: metadata, options: [.caseInsensitive, .diacriticInsensitive]) == nil {
+            return title.isEmpty ? metadata : "\(title) (\(metadata))"
+        }
+        return title
+    }
+
+    /// The authors named in the PDF's metadata, unless the field holds a tool's or an account's name.
+    var bookAuthors: String? {
+        guard let raw = document?.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String else { return nil }
+        let authors = raw.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = authors.lowercased()
+        let placeholders: Set<String> = ["user", "admin", "administrator", "owner", "unknown", "author", "authors", "anonymous", "none"]
+        guard (3...160).contains(authors.count), authors.contains(where: \.isLetter), !placeholders.contains(lower),
+              !["\\", "{", "@", ".tex", "latex", "microsoft", "acrobat", "http"].contains(where: { lower.contains($0) }) else { return nil }
+        return authors
     }
 
     /// Reads the chosen images in the order the composition lists them.

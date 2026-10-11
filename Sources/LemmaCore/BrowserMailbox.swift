@@ -31,12 +31,14 @@ public struct BrowserMailbox: Sendable {
         try WorkspaceRepository.encoder.encode(packet).write(to: dir.appendingPathComponent("request.json"), options: .atomic)
     }
 
-    public func packet(_ id: UUID, now: Date = .now) throws -> BrowserPacket {
+    /// The prepared packet. Its images and text can be fetched for an hour; a result can be saved for a day, since a
+    /// reader may review a draft for a while and a thinking model may answer slowly.
+    public func packet(_ id: UUID, now: Date = .now, maximumAge: TimeInterval = 3600) throws -> BrowserPacket {
         let url = directory(id).appendingPathComponent("request.json")
         guard FileManager.default.fileExists(atPath: url.path) else { throw BridgeError.invalidRequest }
         let packet = try WorkspaceRepository.decoder.decode(BrowserPacket.self, from: Data(contentsOf: url))
         guard packet.id == id else { throw BridgeError.invalidRequest }
-        guard now.timeIntervalSince(packet.createdAt) < 3600 else { throw BridgeError.expired }
+        guard now.timeIntervalSince(packet.createdAt) < maximumAge else { throw BridgeError.expired }
         return packet
     }
 
@@ -53,7 +55,7 @@ public struct BrowserMailbox: Sendable {
     }
 
     public func saveResult(_ result: BrowserResult) throws {
-        _ = try packet(result.requestID)
+        _ = try packet(result.requestID, maximumAge: 86_400)
         if let raw = result.conversationURL {
             guard let url = URL(string: raw), url.scheme == "https", url.host == "chatgpt.com" else {
                 throw BridgeError.invalidURL

@@ -34,12 +34,48 @@
       FORBID_ATTR: ['src', 'srcset']
     });
   };
-  root.renderStudy = function (markdown) {
+  // The workbench theme's colours, as CSS variables (see study.css); an empty object returns to the defaults.
+  root.setStudyTheme = function (colours) {
+    const style = document.documentElement.style;
+    for (const name of ['text', 'link', 'code-text', 'code-bg', 'quote-bg', 'rule']) {
+      if (colours && colours[name]) style.setProperty('--' + name, colours[name]); else style.removeProperty('--' + name);
+    }
+  };
+  root.renderStudy = function (markdown, colours) {
+    root.setStudyTheme(colours);
     const content = document.getElementById('content');
     content.innerHTML = root.renderStudyHTML(markdown);
-    document.fonts.ready.then(reportHeight);
+    fitDisplays();
+    document.fonts.ready.then(() => { fitDisplays(); reportHeight(); });
     reportHeight();
   };
+  // A displayed equation wider than the column is set smaller, down to 72 %, so that it and its number fit side by side:
+  // KaTeX centres the equation over the whole width and pins the number to the right edge, where it covered the end of a
+  // wide equation. Narrower still, the equation scrolls sideways with its number after it.
+  function fitDisplays() {
+    document.querySelectorAll('#content .katex-display').forEach(display => {
+      const katex = display.querySelector(':scope > .katex');
+      const html = katex && katex.querySelector(':scope > .katex-html');
+      if (!html || display.closest('.step')) return;
+      katex.style.fontSize = '';
+      display.classList.remove('wide');
+      const width = display.clientWidth - 4;
+      const tag = html.querySelector(':scope > .tag');
+      let equation = 0;
+      for (const part of html.children) if (part !== tag) equation += part.getBoundingClientRect().width;
+      const needed = equation + (tag ? 2 * (tag.getBoundingClientRect().width + 12) : 0);
+      if (width <= 0 || needed <= width) return;
+      const scale = width / needed;
+      katex.style.fontSize = (1.06 * Math.max(0.72, scale)).toFixed(3) + 'em';
+      if (scale < 0.72) display.classList.add('wide');
+    });
+  }
+  let fittedWidth = 0;
+  root.addEventListener('resize', () => {
+    if (document.documentElement.clientWidth === fittedWidth) return;
+    fittedWidth = document.documentElement.clientWidth;
+    fitDisplays();
+  });
   // A derivation's steps, typeset one per row with the verdict in the gutter, as an editor's preview.
   function escapeText(text) {
     return String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

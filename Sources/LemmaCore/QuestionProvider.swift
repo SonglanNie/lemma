@@ -39,8 +39,9 @@ public enum QuestionProvider: String, Codable, CaseIterable, Identifiable, Senda
 /// an API key helper or a cloud provider. Lemma neither removes the CLI's own credentials from its environment
 /// nor adds any, and it never forces a login method.
 public enum QuestionCLI {
-    /// The same instruction precedes the draft for every provider, CLI or API.
-    public static let studyInstruction = "Answer the study question using only the supplied text and images. Return the explanation as Markdown with LaTeX."
+    /// The same instruction precedes the draft for every provider, CLI or API. The draft itself says what to base the
+    /// answer on (the attached pages, and standard mathematics); this only sets the form.
+    public static let studyInstruction = "You help a reader study a book: answer the study question that follows, about the attached pages. Return the explanation as Markdown, with mathematics in LaTeX between $…$ or $$…$$."
     static let cliInstruction = studyInstruction + " Do not run commands, browse files, use tools or delegate."
 
     /// The chosen executable (a path, `~/…`, a folder or a command name), else the first one found on the search path.

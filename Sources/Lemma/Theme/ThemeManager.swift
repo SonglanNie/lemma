@@ -511,7 +511,13 @@ extension WorkbenchColors {
         // Light themes: 11 % towards black, enough for the white paper's edge to read on a paper-coloured editor.
         return isDark ? background.darken(0.22) : background.mixed(with: RGBA(0, 0, 0), 0.11)
     }
-    /// The accent the theme uses for focus and primary actions.
-    var accent: Color { self[.focusBorder] }
-    var accentRGBA: RGBA { rgba(.focusBorder) }
+    /// The accent the theme uses for focus and primary actions, readable on the editor. A theme whose focus border is
+    /// meant to be nearly invisible (SynthWave '84's is #1F212B on #262335) takes its primary button colour, made
+    /// readable, instead: tinted with it, borderless menus, selected icons and accent lines had vanished. Focus rings
+    /// keep `focusBorder` itself, and marks on the page take it from the theme snapshot as before.
+    var accent: Color { focusIsReadable ? self[.focusBorder] : accentRGBA.color }
+    var accentRGBA: RGBA {
+        focusIsReadable ? rgba(.focusBorder) : rgba(.buttonBackground).readable(on: rgba(.editorBackground), ratio: 3)
+    }
+    private var focusIsReadable: Bool { rgba(.focusBorder).contrast(with: rgba(.editorBackground)) >= 3 }
 }

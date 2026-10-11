@@ -2,6 +2,26 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.2.0 (October 2026)
+
+**Asking, redone.** Select a passage and press ⌘K: in the VS Code-style window, Ask now opens as an editor widget under the passage, in your theme's colours, the way VS Code's inline chat opens under a line. It shows the passage, your question and the kind of help, then everything sent with it, each item with its checkbox and the cited equations as thumbnails, and finally the assistant and how to send. In the Classic window the popover keeps its size: the passage and the context list are no longer squeezed out of sight.
+
+- **Send now** or **Review first** (ChatGPT Web) replace “Ask and save” and “Review in Lemma” in quick questions; Review first prepares the question in Lemma's ChatGPT page for you to check and send.
+- The **Questions** panel lists every question asked since Lemma opened. A failed or cancelled question can be asked again with one click (**Ask Again**), with the same text and images, to the same note.
+- The question names the printed page as well as the PDF's, the book's authors when the PDF knows them, and puts the passage and your notes before the question. **Explain** asks the assistant to fill in the steps the book leaves out (“it is not hard to show”), and the command-line tools and API keys no longer forbid ordinary mathematics that the pages don't show.
+
+**The Assistants window, redrawn** to look like the rest of the workbench, in your theme's colours. A title bar holds the **Questions** and **Connections** tabs and **Continue Reading**; the questions are listed on the side bar's colour, each with a spinner, a check or a cross; the selected one shows its state on one line with the next action beside it, then ChatGPT's page from edge to edge, with VS Code's progress line along its top while it answers. Connections lists the six assistants with their icon and whether each is ready, and the Chrome companion's setup in two steps. **Prepare your question** (Full Draft…) takes the same look. The Classic window keeps its Mac controls.
+
+**Fixed.**
+- A saved explanation scrolls with the trackpad and the mouse wheel: with the pointer over the explanation, the Notes inspector stopped scrolling.
+- Explanations and answers take the theme's colours for text, links, code and quotes, and a displayed equation too wide for the inspector is set smaller so that it fits beside its number, which used to cover the end of the equation.
+- In a theme whose focus colour is nearly invisible, such as SynthWave '84, the note's kind, its More Actions menu and the notes filter could not be seen: such controls now take the theme's button colour, made readable. The note editor's links and fields use the theme's link and input colours.
+- Switching the Assistants window to Connections while ChatGPT was answering showed an empty page.
+- ChatGPT Web: macOS's smart quotes changed the question while Lemma typed it (`"""` became `“”"`), so Lemma stopped with “The question could not be inserted intact”. The question stayed in ChatGPT, which shows unsent text again in every new chat, so every later question stopped with “The composer already contains a draft”. Lemma now types with substitutions off, replaces an unsent question it prepared itself, keeps any other draft and offers **Replace Draft and Ask Again**, and keeps the ChatGPT page in view after a failure.
+- ChatGPT Web follows ChatGPT's October page: the composer, Send and Stop are found by their structure in any interface language, images go through the multi-file picker rather than the camera's, and **Cancel Question** stops the answer being written.
+- Answers from ChatGPT Web keep their code blocks (one line per line, with the language, ready for the Lab), tables, bold and italic. A reply with code is no longer saved before it is finished.
+- An answer that takes more than an hour (a long review, a slow thinking model) is still saved.
+
 ## 3.1.0 (October 2026)
 
 **Updates inside Lemma.** **Lemma › Check for Updates…** shows what is new in a release, installs it and relaunches Lemma: no more downloading a disk image. If you agree (Lemma asks once, at its second launch), it also checks once a day, and it can download and install an update on its own when you quit (**Settings › Updates**). Updates are signed with the project's key, so Lemma installs only versions its maintainers published.

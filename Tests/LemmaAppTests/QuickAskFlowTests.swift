@@ -49,7 +49,7 @@ final class QuickAskFlowTests: XCTestCase {
         let packet = try store.mailbox.packet(requestID)
         XCTAssertEqual(packet.mode, .draft)
         XCTAssertEqual(packet.images.map(\.label), ["Source A", "Cited: Equation (1.1)"])
-        for expected in ["Text layer of Source A", quote, "Image 2: Equation (1.1), PDF page 1", "Linear model (written coefficients): β ∈ ℝᵖ", QuestionStyle.nextStep.instruction] {
+        for expected in ["Text of Source A", quote, "Image 2: Equation (1.1), PDF page 1", "Linear model (written coefficients): β ∈ ℝᵖ", QuestionStyle.nextStep.instruction] {
             XCTAssertTrue(packet.prompt.contains(expected), expected)
         }
         XCTAssertFalse(packet.prompt.contains("Private: I still doubt this."), "Glossary reasoning stays local.")

@@ -16,8 +16,17 @@ final class ChatGPTSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     private var watchdog: Task<Void, Never>?
     static let home = URL(string: "https://chatgpt.com/")!
 
+    /// macOS's text substitutions (smart quotes and dashes, text replacements, spelling correction) act on the text Lemma
+    /// types into ChatGPT's composer as on typing: `"""` became `“”"` and the question no longer matched what Lemma
+    /// prepared. WebKit reads these defaults when the app creates its first web view, so the app registers them at launch.
+    static func disableTextSubstitutions() {
+        UserDefaults.standard.register(defaults: ["WebAutomaticQuoteSubstitutionEnabled": false, "WebAutomaticDashSubstitutionEnabled": false,
+                                                  "WebAutomaticTextReplacementEnabled": false, "WebAutomaticSpellingCorrectionEnabled": false])
+    }
+
     init(runtime: QuestionRuntime) {
         self.runtime = runtime
+        Self.disableTextSubstitutions()
         let config = WKWebViewConfiguration()
         config.websiteDataStore = runtime.root.deletingLastPathComponent().standardizedFileURL == WorkspaceRepository.defaultRoot.standardizedFileURL ? .default() : .nonPersistent()
         let scripts = config.userContentController
@@ -88,7 +97,8 @@ final class ChatGPTSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
     }
 
     private func begin(_ job: QuestionJob) {
-        view.evaluateJavaScript("window.LemmaStart?.('\(job.id.uuidString)')") { [weak self, weak job] _, error in
+        // Replacing a draft that is not Lemma's own is the reader's choice, made in the Questions panel.
+        view.evaluateJavaScript("window.LemmaStart?.('\(job.id.uuidString)', {replaceDraft: \(job.replacesDraft)})") { [weak self, weak job] _, error in
             guard let error else { return }
             Task { @MainActor in
                 guard let self, let job, !job.finished else { return }
@@ -110,12 +120,14 @@ final class ChatGPTSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
         // A newer navigation replacing this one, or WebKit handing a download or app link elsewhere, is not a failure.
         if error.code == NSURLErrorCancelled || (error.domain == WKErrorDomain && error.code == 102) { return }
         guard let active, !active.finished else { return }
-        runtime?.finish(active, result: BrowserResult(requestID: active.id, status: "error", message: "ChatGPT could not load: \(error.localizedDescription). Check the connection, then ask again from the note."))
+        active.failureReason = "load"
+        runtime?.finish(active, result: BrowserResult(requestID: active.id, status: "error", message: "ChatGPT could not load: \(error.localizedDescription). Check the connection, then ask again."))
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         guard let active, !active.finished else { return }
-        runtime?.finish(active, result: BrowserResult(requestID: active.id, status: "error", message: "The ChatGPT page stopped unexpectedly. Ask again from the note."))
+        active.failureReason = "crash"
+        runtime?.finish(active, result: BrowserResult(requestID: active.id, status: "error", message: "The ChatGPT page stopped unexpectedly. Ask again."))
     }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
@@ -146,6 +158,7 @@ final class ChatGPTSession: NSObject, WKNavigationDelegate, WKUIDelegate, WKScri
                 guard let state = body["status"] as? String else { throw BridgeError.invalidRequest }
                 let result = BrowserResult(requestID: id, status: state, answer: body["answer"] as? String,
                                            conversationURL: body["conversationURL"] as? String, message: body["message"] as? String)
+                if state == "error" { active.failureReason = body["reason"] as? String }
                 if state == "complete" || state == "error" { runtime.finish(active, result: result) }
                 else {
                     if state == "sent" { submitted = true }
@@ -171,10 +184,41 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     }
 }
 
+/// Shows the session's one web view. A tab switch can make a new host before SwiftUI tears the old one down; handing
+/// SwiftUI the web view itself, the old host's teardown then took it out of the new one, and the page went blank. Each
+/// host is a plain view holding the web view instead: the newest host takes it, and a host going away lets it go only
+/// if it still holds it.
 struct AssistantWebView: NSViewRepresentable {
     let view: WKWebView
-    func makeNSView(context: Context) -> WKWebView { view }
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func makeNSView(context: Context) -> Host { Host(view) }
+    func updateNSView(_ host: Host, context: Context) { if view.superview == nil { host.adopt() } }
+    static func dismantleNSView(_ host: Host, coordinator: ()) { host.release() }
+
+    final class Host: NSView {
+        private let webView: WKWebView
+        init(_ webView: WKWebView) {
+            self.webView = webView
+            super.init(frame: .zero)
+            adopt()
+        }
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        func adopt() {
+            guard webView.superview !== self else { return }
+            webView.removeFromSuperview()
+            webView.frame = bounds
+            webView.autoresizingMask = [.width, .height]
+            addSubview(webView)
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil { adopt() }
+        }
+
+        func release() { if webView.superview === self { webView.removeFromSuperview() } }
+    }
 }
 
 /// The embedded ChatGPT page, counted while on screen so the runtime does not release it under the reader.

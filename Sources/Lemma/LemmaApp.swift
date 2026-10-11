@@ -5,6 +5,8 @@ import AppKit
 struct LemmaApp: App {
     @State private var store = StudyStore()
 
+    init() { ChatGPTSession.disableTextSubstitutions() }
+
     var body: some Scene {
         WindowGroup("Lemma") {
             ReaderWindow(store: store)
@@ -12,7 +14,12 @@ struct LemmaApp: App {
                 .tint(.lemmaOlive)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
-                    NSApp.activate(ignoringOtherApps: true)
+                    if QAHooks.startsInBackground {
+                        // A QA copy started in the background stays behind the reader's windows and never takes the keyboard.
+                        DispatchQueue.main.async { for window in NSApp.windows where window.styleMask.contains(.titled) { window.orderBack(nil) } }
+                    } else {
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
                     if let iconURL = Bundle.main.url(forResource: "Lemma", withExtension: "icns"),
                        let icon = NSImage(contentsOf: iconURL) {
                         NSApp.applicationIconImage = icon

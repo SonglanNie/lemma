@@ -20,6 +20,12 @@ final class QAHooks: NSObject {
         return id.hasPrefix("com.lemma.app.qa") || !id.hasPrefix("com.lemma.app")
     }
 
+    /// A QA copy launched with LEMMA_QA_BACKGROUND=1 never activates itself: typing in the reader's own apps must not
+    /// land in its fields.
+    static var startsInBackground: Bool {
+        isAllowed && ProcessInfo.processInfo.environment["LEMMA_QA_BACKGROUND"] == "1"
+    }
+
     static func installIfRequested(store: StudyStore) {
         guard shared == nil, isAllowed, let path = ProcessInfo.processInfo.environment["LEMMA_QA_DIR"], !path.isEmpty else { return }
         let hooks = QAHooks(directory: URL(fileURLWithPath: path, isDirectory: true), store: store)
@@ -262,6 +268,17 @@ extension StudyStore {
             reader.view?.setCurrentSelection(selection, animate: false)
             reader.updateSelection()
         case "askSelection": prepareQuickAsk()
+        case "selectRegion":
+            // A captured region, as a drag in Capture mode makes one: page (from 1) and x, y, width, height in PDF points.
+            guard let number = info["page"].flatMap(Int.init), let page = document?.page(at: number - 1),
+                  let x = info["x"].flatMap(Double.init), let y = info["y"].flatMap(Double.init),
+                  let width = info["width"].flatMap(Double.init), let height = info["height"].flatMap(Double.init) else { throw QAHooks.QAError.missing("page, x, y, width, height") }
+            let rect = CGRect(x: x, y: y, width: width, height: height)
+            reader.selection = (number - 1, rect, page.selection(for: rect)?.string ?? "")
+            reader.hasSelection = true
+        case "quickAsk":
+            // The open Ask widget: question=, style=, provider=, mode=, untick=text|section|cited, state=<name>, send=1.
+            NotificationCenter.default.post(name: QuickAskPane.qaNotification, object: nil, userInfo: info)
         case let action where action.hasPrefix("assistant") || action.hasPrefix("questionSheet"): try await performAssistantQA(action, info: info)
         case "dismiss": referencePeek = nil; definitionLookup = nil; quickAsk = nil; palette = nil
         case "waitAnalysis":
@@ -580,6 +597,10 @@ extension StudyStore {
             // Scrolls the reader through `pages` pages at `fps` (step points per frame) and writes <name>.json (see QAPerf).
             guard let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("QA folder") }
             try await QAPerf.scrollBench(store: self, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "scrollBench").json"))
+        case "wheel":
+            // A trackpad gesture at x, y (points from the window's top left); writes <name>.json (see QAWheel).
+            guard let window = mainWindow, let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("window") }
+            try await QAWheel.perform(window: window, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "wheel").json"))
         case "inspector": showStudy = info["value"] != "0"
         case "sidebar": showLibrary = info["value"] != "0"
         default:

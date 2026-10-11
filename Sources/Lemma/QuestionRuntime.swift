@@ -12,17 +12,36 @@ final class QuestionJob: Identifiable {
     var model: String?
     var finished = false
     var failed = false
+    /// Why the ChatGPT page stopped, when it can say: draft, conversation, signedOut, attach, insert, ready, timeout,
+    /// load or crash. The Questions panel offers what fits.
+    var failureReason: String?
+    /// The reader chose to replace the draft ChatGPT's composer held.
+    var replacesDraft = false
+    /// The note's question, for the list of questions.
+    var title: String
+    let startedAt = Date.now
     @ObservationIgnored var process: QuestionProcess?
     @ObservationIgnored var task: Task<Void, Never>?
-    init(_ packet: BrowserPacket) { self.packet = packet; id = packet.id }
+    init(_ packet: BrowserPacket, title: String = "") {
+        self.packet = packet; id = packet.id
+        self.title = title.isEmpty ? QuestionJob.question(in: packet.prompt) : title
+    }
+
+    /// The question in a prepared draft: the lines after “Question:” up to the next blank line.
+    static func question(in prompt: String) -> String {
+        guard let range = prompt.range(of: "Question:\n", options: .backwards) else { return String(prompt.prefix(80)) }
+        return prompt[range.upperBound...].components(separatedBy: "\n\n").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 }
 
 @MainActor @Observable
 final class QuestionRuntime {
     var jobs: [QuestionJob] = []
     var selectedID: UUID?
-    var connectionProvider = QuestionProvider.chatGPTWeb
+    var connectionProvider = QuestionProvider.chatGPTWeb { didSet { showsCompanion = false } }
     var panel = "connections"
+    /// Connections shows the Chrome companion's setup rather than an assistant.
+    var showsCompanion = false
     /// What each CLI reports about its sign-in, or why Lemma could not tell.
     var connections: [QuestionProvider: String] = [:]
     var signIns: [QuestionProvider: CLISignInState] = [:]
@@ -55,6 +74,8 @@ final class QuestionRuntime {
     init(root: URL) { self.root = root }
 
     var selected: QuestionJob? { jobs.first { $0.id == selectedID } }
+    /// The most recent ChatGPT Web question: the embedded page shows its chat.
+    var latestWebJob: QuestionJob? { jobs.first { $0.provider == .chatGPTWeb } }
     var webBusy: Bool { jobs.contains { $0.provider == .chatGPTWeb && !$0.finished } }
     var provider: QuestionProvider {
         QuestionProvider(rawValue: UserDefaults.standard.string(forKey: LemmaPreferences.questionProvider) ?? "") ?? .chatGPTWeb
@@ -95,9 +116,13 @@ final class QuestionRuntime {
 
     // MARK: Questions
 
-    func start(_ packet: BrowserPacket, store: StudyStore) {
+    func start(_ packet: BrowserPacket, store: StudyStore, replacingDraft: Bool = false) {
         self.store = store
-        let job = QuestionJob(packet); jobs.insert(job, at: 0); selectedID = job.id
+        // The open book is current; the library's copy of it may not have the note yet.
+        let question = store.workspace?.notes.first { $0.id == packet.noteID }?.question
+            ?? store.library.first { $0.id == packet.workspaceID }?.notes.first { $0.id == packet.noteID }?.question ?? ""
+        let job = QuestionJob(packet, title: question); jobs.insert(job, at: 0); selectedID = job.id
+        job.replacesDraft = replacingDraft
         panel = "requests"
         connectionProvider = job.provider
         if job.provider == .chatGPTWeb {
@@ -248,10 +273,17 @@ final class QuestionRuntime {
         if job.provider == .chatGPTWeb { scheduleWebRelease() }
     }
 
+    /// Asks a finished question again, as a new request with the same draft and images, to the same note.
+    func retry(_ job: QuestionJob, replacingDraft: Bool = false) {
+        guard job.finished, let store else { return }
+        store.askAgain(job.packet, replacingDraft: replacingDraft)
+    }
+
     func cancel(_ id: UUID) {
         guard let job = jobs.first(where: { $0.id == id }), !job.finished else { return }
         job.process?.cancel(); job.task?.cancel()
         if job.provider == .chatGPTWeb { webSession?.cancel(id) }
+        job.failureReason = "cancelled"
         finish(job, result: BrowserResult(requestID: id, status: "error", message: "Question cancelled. Its source note is kept."))
     }
 

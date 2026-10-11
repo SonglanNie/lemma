@@ -31,9 +31,9 @@ struct NoteLinksPane: View {
             HStack {
                 Label("Linked notes", systemImage: "link").font(.headline)
                 Spacer()
-                Button("Map…") { store.showDependencyMap = true }.buttonStyle(.link).font(.caption).disabled(outgoing.isEmpty && incoming.isEmpty)
+                Button("Map…") { store.showDependencyMap = true }.workbenchLinkStyle().font(.caption).disabled(outgoing.isEmpty && incoming.isEmpty)
                 if !showComposer {
-                    Button("Add link…") { showComposer = true }.buttonStyle(.link).font(.caption)
+                    Button("Add link…") { showComposer = true }.workbenchLinkStyle().font(.caption)
                         .disabled((store.workspace?.notes.count ?? 0) < 2)
                 }
             }
@@ -151,7 +151,7 @@ struct NoteLinksPane: View {
             HStack {
                 Text("\(note.kind.label) · \(note.state.label)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Open note") { store.openLinkedNote(note.id) }.buttonStyle(.link).font(.caption)
+                Button("Open note") { store.openLinkedNote(note.id) }.workbenchLinkStyle().font(.caption)
             }
             if let workspace = store.workspace,
                let image = NSImage(contentsOf: store.repository.assetURL(workspaceID: workspace.id, name: note.anchor.imageName)) {
@@ -178,7 +178,7 @@ struct NoteLinksPane: View {
                     .font(.callout.weight(.medium))
             }
             Button("Go to source · PDF page \(note.anchor.pageIndex + 1)") { store.reader.go(to: note.anchor) }
-                .buttonStyle(.link).font(.caption)
+                .workbenchLinkStyle().font(.caption)
         }.padding(.top, 6)
     }
 

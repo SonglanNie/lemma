@@ -651,7 +651,7 @@ struct AskContextScene: View {
                     Text("4 images").font(.system(size: 9.5)).foregroundStyle(theme[.descriptionForeground])
                     Spacer()
                     Text("Full draft…").font(.system(size: 10)).foregroundStyle(theme[.textLinkForeground])
-                    Text("Review in Lemma").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[.buttonForeground])
+                    Text("Ask").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme[.buttonForeground])
                         .padding(.horizontal, 8).frame(height: 20).background(RoundedRectangle(cornerRadius: 4).fill(theme[.buttonBackground]))
                 }
                 .padding(.horizontal, 14).padding(.bottom, 10)
@@ -683,7 +683,7 @@ struct ChromeScene: View {
             ZStack {
                 VStack(spacing: 4) {
                     Codicon("arrow-right", size: 18).foregroundStyle(theme.accent).opacity(phase >= 1 ? 1 : 0.2)
-                    Text(phase >= 3 ? "Ask and save" : "Review in Lemma").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.tourText)
+                    Text(phase >= 3 ? "Answer saved" : "Send now").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.tourText)
                     Codicon("arrow-left", size: 18).foregroundStyle(theme.accent).opacity(phase >= 3 ? 1 : 0.2)
                 }
                 Circle().fill(theme.accent).frame(width: 9, height: 9).offset(x: phase >= 1 && phase < 3 ? 60 : phase >= 3 ? -60 : -60, y: phase >= 3 ? 24 : -24)

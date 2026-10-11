@@ -239,6 +239,13 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.2: asking, redone", "comment-discussion", [
+            "⌘K opens Ask under the passage, as VS Code's inline chat opens under a line: the passage, your question, the kind of help, and every item sent with it, each with its checkbox.",
+            "Send now, or Review first in Lemma's ChatGPT page. A failed question is asked again with one click, to the same note.",
+            "The question names the printed page and the book's authors, and Explain fills in the steps the book leaves out.",
+            "ChatGPT Web works again when macOS's smart quotes are on, keeps code blocks and tables in its answers, and Cancel stops the answer.",
+            "The Assistants window looks like the rest of Lemma, in your theme's colours; saved explanations scroll smoothly, follow your theme and fit wide equations beside their number."
+        ]),
         ("Lemma 3.1: updates inside Lemma", "cloud-download", [
             "Lemma › Check for Updates… shows what is new and installs the new version, then relaunches. No more downloading a disk image.",
             "If you agree (Lemma asks once), it also checks once a day; it can download and install on its own when you quit. Settings › Updates.",
@@ -284,7 +291,7 @@ struct ReleaseNotesEditor: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("What’s New in Lemma \(WelcomeEditor.version)").font(.system(size: 30, weight: .semibold, design: .serif))
                             .foregroundStyle(theme[.foreground])
-                        Text("October 2026 · 3.1, and 3.0, the first public release").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                        Text("October 2026 · 3.2, 3.1, and 3.0, the first public release").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
                     }
                 }
                 ForEach(sections, id: \.0) { section in

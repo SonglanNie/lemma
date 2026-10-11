@@ -21,22 +21,51 @@ final class QuestionComposerTests: XCTestCase {
         composition.linked = [.init(title: "Definition: Normal equations", pageIndex: 30, pageLabel: "12", note: "Used to find the minimum.")]
         composition.pins = [.init(title: "Hessian identity", pageIndex: 40, pageLabel: "21")]
         let prompt = composition.prompt
-        for expected in ["I am studying ESL, in the section “2.3.1 Linear Models and Least Squares”.", "shown in attached image 1",
-                         "Text layer of Source A", "RSS(β) = Σ", "Question:\nWhy is RSS convex?", "My reasoning so far:\nIts Hessian",
-                         "- Image 2: Equation (2.6), PDF page 31, label 12.", "Design matrix (written X)", ": N × p. Scope: Chapter 2. Defined near PDF page 31.",
-                         "- Image 3: Definition: Normal equations, PDF page 31 · Used to find the minimum.", "Reference 1 (image 4): Hessian identity, PDF page 41, label 21.",
-                         QuestionStyle.hint.instruction] {
+        for expected in ["I am studying ESL, in the section “2.3.1 Linear Models and Least Squares”.", "Source A: PDF page 31, the passage I am asking about, attached as image 1.",
+                         "Text of Source A, extracted from the PDF", "<source_text>\nRSS(β) = Σ", "Question:\nWhy is RSS convex?\n", "My reasoning so far:\nIts Hessian",
+                         "- Image 2: Equation (2.6), PDF page 31 (printed page 12).", "Design matrix (written X)", ": N × p. Scope: Chapter 2. Defined near PDF page 31.",
+                         "- Image 3: Definition: Normal equations, PDF page 31 (printed page 12) · Used to find the minimum.",
+                         "- Image 4: Reference 1, Hessian identity, PDF page 41 (printed page 21).",
+                         QuestionStyle.hint.instruction, QuestionComposition.answerRules] {
             XCTAssertTrue(prompt.contains(expected), expected)
         }
         XCTAssertFalse(prompt.contains("Private reasoning stays local."), "Glossary context shares names, notation and scope only.")
         XCTAssertFalse(prompt.contains("A saved answer stays local."))
         XCTAssertEqual(composition.imageLabels, ["Source A", "Cited: Equation (2.6)", "Linked: Definition: Normal equations", "Reference 1: Hessian identity"])
+        // The book and its pages come first, the question and the kind of help last.
+        let order = ["I am studying", "Image 2:", "Image 4:", "<source_text>", "My glossary entries", "My reasoning so far", "Question:", QuestionStyle.hint.instruction]
+        let positions = order.map { prompt.range(of: $0)?.lowerBound }
+        XCTAssertFalse(positions.contains(nil))
+        XCTAssertEqual(positions.compactMap { $0 }, positions.compactMap { $0 }.sorted(), "Context before the question; the question before the instruction.")
 
         let bare = QuestionComposition(bookTitle: "ESL", note: question, style: .explanation)
-        XCTAssertFalse(bare.prompt.contains("Text layer"))
+        XCTAssertFalse(bare.prompt.contains("Text of Source A"))
         XCTAssertFalse(bare.prompt.contains("section"))
+        XCTAssertFalse(bare.prompt.contains("printed page"), "A page label equal to the PDF's number says nothing more.")
         XCTAssertEqual(bare.imageLabels, ["Source A"])
         XCTAssertEqual(QuestionStyle.nextStep.defaultQuestion, "What is the next step here?")
+    }
+
+    /// The printed page is named only when the book prints a number other than the PDF's own; the authors follow the
+    /// title; ChatGPT's page can still recognise the draft as Lemma's.
+    func testPrintedPagesAuthorsAndTheMarksLemmaRecognises() {
+        var question = note("Explain this step.", kind: .question, page: 156)
+        question.anchor.pageLabel = "157"
+        var composition = QuestionComposition(bookTitle: "ISLP (An Introduction to Statistical Learning)", section: "4.4.1 Linear Discriminant Analysis for p = 1",
+                                              note: question, sourceText: "Taking the log of (4.17)", style: .explanation)
+        XCTAssertTrue(composition.prompt.contains("Source A: PDF page 157, the passage"), "The PDF's own label is not a printed page.")
+        composition.printedPage = "148"
+        composition.bookAuthors = "Gareth James, Daniela Witten, Trevor Hastie, Robert Tibshirani, Jonathan Taylor"
+        composition.cited = [.init(title: "Equation (4.17)", pageIndex: 155, pageLabel: "147")]
+        let prompt = composition.prompt
+        XCTAssertTrue(prompt.hasPrefix("I am studying ISLP (An Introduction to Statistical Learning) by Gareth James, Daniela Witten, Trevor Hastie, Robert Tibshirani, Jonathan Taylor, in the section “4.4.1 Linear Discriminant Analysis for p = 1”."))
+        XCTAssertTrue(prompt.contains("Source A: PDF page 157 (printed page 148), the passage I am asking about, attached as image 1."))
+        XCTAssertTrue(prompt.contains("- Image 2: Equation (4.17), PDF page 156 (printed page 147)."))
+        XCTAssertTrue(prompt.contains("filling in any step the book leaves out"), "Explain asks for the steps the book skips.")
+        XCTAssertTrue(prompt.hasSuffix(QuestionComposition.answerRules))
+        // dom.js recognises Lemma's own unsent drafts by these two marks.
+        XCTAssertTrue(prompt.hasPrefix("I am studying "))
+        XCTAssertNotNil(prompt.range(of: #"Source A: PDF page \d+"#, options: .regularExpression))
     }
 
     func testGlossaryMatchingUsesWholeTermsAndSymbolCase() {

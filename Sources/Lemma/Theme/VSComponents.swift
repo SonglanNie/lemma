@@ -148,6 +148,8 @@ struct VSTextField: View {
     let placeholder: String
     @Binding var text: String
     var icon: String? = nil
+    /// Hides what is typed (an API key).
+    var secure = false
     var onSubmit: () -> Void = {}
     var trailing: AnyView? = nil
     /// ↓ in the field, to move into the list it filters.
@@ -157,7 +159,10 @@ struct VSTextField: View {
     var body: some View {
         HStack(spacing: 4) {
             if let icon { Codicon(icon, size: 14).foregroundStyle(theme[.inputPlaceholderForeground]) }
-            TextField("", text: $text, prompt: Text(placeholder).foregroundColor(theme[.inputPlaceholderForeground]))
+            Group {
+                let prompt = Text(placeholder).foregroundColor(theme[.inputPlaceholderForeground])
+                if secure { SecureField("", text: $text, prompt: prompt) } else { TextField("", text: $text, prompt: prompt) }
+            }
                 .textFieldStyle(.plain).font(.ui(13)).foregroundStyle(theme[.inputForeground])
                 .focused($focused).onSubmit(onSubmit)
                 .onKeyPress(.downArrow) {

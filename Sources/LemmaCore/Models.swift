@@ -339,7 +339,7 @@ public enum QuestionStyle: String, CaseIterable, Identifiable, Sendable {
     }
     public var instruction: String {
         switch self {
-        case .explanation: "Explain the specific difficulty step by step."
+        case .explanation: "Explain it step by step: what each step does and why it holds, filling in any step the book leaves out (“it is not hard to show”, “one can show”)."
         case .hint: "Give one useful hint and a question to help me proceed. Do not reveal the full solution."
         case .nextStep: "Show only the next missing step in the derivation, explain why it is valid, and let me try the rest."
         case .assumptions: "Identify the assumptions needed for this step. Distinguish explicit source assumptions from additional assumptions and explain what fails without them."

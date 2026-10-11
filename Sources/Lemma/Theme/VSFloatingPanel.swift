@@ -17,18 +17,23 @@ final class VSFloatingPanel {
 
     private var panel: Panel?
     private var monitors: [Any] = []
+    /// Where the widget was asked to appear, kept so that a widget whose content grows can be placed again.
+    private var layout: (anchor: CGRect, area: CGRect, placement: Placement, maxHeight: CGFloat)?
     var onClose: (() -> Void)?
 
     var isShown: Bool { panel?.isVisible == true }
 
     /// Shows `content` next to `anchor` (in `view`'s coordinates). Interactive widgets take clicks and the keyboard and
-    /// close on Escape or a click elsewhere; hovers let the pointer through.
+    /// close on Escape or a click elsewhere; hovers let the pointer through. `takesKeyboard` makes the widget key at
+    /// once, for a widget the reader types into first (Ask). A widget whose content changes height (`resizable`) sets
+    /// it through `fit(height:)`: SwiftUI would otherwise size the panel itself, from content it measures unbounded.
     func show<Content: View>(_ content: Content, anchor: CGRect, in view: NSView, placement: Placement, interactive: Bool,
-                             width: CGFloat? = nil, maxHeight: CGFloat = 560) {
+                             width: CGFloat? = nil, maxHeight: CGFloat = 560, takesKeyboard: Bool = false, resizable: Bool = false) {
         close(notify: false)
         guard let window = view.window else { return }
         let root = content.environment(\.theme, ThemeManager.shared.colors)
         let hosting = NSHostingView(rootView: AnyView(root))
+        if resizable { hosting.sizingOptions = [] }
         if let width { hosting.frame.size.width = width }
         let fitting = hosting.fittingSize
         let size = CGSize(width: width ?? min(fitting.width, 760), height: min(fitting.height, maxHeight))
@@ -37,18 +42,8 @@ final class VSFloatingPanel {
         // Widgets stay inside the window, as VS Code's do (and on its screen); one that cannot fit below its line goes above.
         let content = window.convertToScreen(window.contentLayoutRect)
         let area = screen.isEmpty ? content : content.intersection(screen)
-        var origin = CGPoint(x: anchorOnScreen.minX, y: 0)
-        switch placement {
-        case .above:
-            origin.y = anchorOnScreen.maxY + 4
-            if origin.y + size.height > area.maxY, anchorOnScreen.minY - 4 - size.height >= area.minY { origin.y = anchorOnScreen.minY - 4 - size.height }
-        case .below:
-            origin.y = anchorOnScreen.minY - 4 - size.height
-            if origin.y < area.minY, anchorOnScreen.maxY + 4 + size.height <= area.maxY { origin.y = anchorOnScreen.maxY + 4 }
-        }
-        origin.x = max(area.minX + 4, min(origin.x, area.maxX - size.width - 4))
-        // Taller than the room left: aligned with the window's top, it covers the line rather than leaving the window.
-        origin.y = min(max(area.minY + 4, origin.y), area.maxY - size.height - 4)
+        layout = (anchorOnScreen, area, placement, maxHeight)
+        let origin = Self.origin(for: size, anchor: anchorOnScreen, area: area, placement: placement)
 
         let panel = Panel(contentRect: NSRect(origin: origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         panel.isOpaque = false
@@ -68,6 +63,7 @@ final class VSFloatingPanel {
         window.addChildWindow(panel, ordered: .above)
         panel.invalidateShadow()
         self.panel = panel
+        if takesKeyboard { panel.makeKey() }
         if interactive {
             monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
                 if let self, let panel = self.panel, event.window !== panel { self.close() }
@@ -86,10 +82,40 @@ final class VSFloatingPanel {
         }
     }
 
+    /// Places a widget of `size` beside its anchor: on the preferred side, else the other one if it fits there, and always
+    /// inside the window. Taller than the room left, it covers its line rather than leaving the window.
+    private static func origin(for size: CGSize, anchor: CGRect, area: CGRect, placement: Placement) -> CGPoint {
+        var origin = CGPoint(x: anchor.minX, y: 0)
+        switch placement {
+        case .above:
+            origin.y = anchor.maxY + 4
+            if origin.y + size.height > area.maxY, anchor.minY - 4 - size.height >= area.minY { origin.y = anchor.minY - 4 - size.height }
+        case .below:
+            origin.y = anchor.minY - 4 - size.height
+            if origin.y < area.minY, anchor.maxY + 4 + size.height <= area.maxY { origin.y = anchor.maxY + 4 }
+        }
+        origin.x = max(area.minX + 4, min(origin.x, area.maxX - size.width - 4))
+        origin.y = min(max(area.minY + 4, origin.y), area.maxY - size.height - 4)
+        return origin
+    }
+
+    /// Gives the widget its content's new height (a list that finished loading, a field that grew) and places it again.
+    func fit(height: CGFloat) {
+        guard let panel, let layout, height > 0 else { return }
+        let size = CGSize(width: panel.frame.width, height: min(height, layout.maxHeight))
+        guard abs(size.height - panel.frame.height) > 0.5 else { return }
+        let origin = Self.origin(for: size, anchor: layout.anchor, area: layout.area, placement: layout.placement)
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        panel.contentView?.frame = NSRect(origin: .zero, size: size)
+        panel.invalidateShadow()
+    }
+
     func close(notify: Bool = true) {
         for monitor in monitors { NSEvent.removeMonitor(monitor) }
         monitors.removeAll()
         guard let panel else { return }
+        // The reader's window takes the keyboard back from a widget that had it.
+        if panel.isKeyWindow { panel.parent?.makeKey() }
         panel.parent?.removeChildWindow(panel)
         panel.orderOut(nil)
         self.panel = nil

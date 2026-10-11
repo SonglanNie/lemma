@@ -126,7 +126,7 @@ struct StudyPane: View {
                                     }
                                     Spacer(minLength: 0)
                                 }.padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(note.id == store.selectedNoteID ? Color.lemmaOlive.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                                    .background(note.id == store.selectedNoteID ? Color.lemmaOliveSelection : Color.clear, in: RoundedRectangle(cornerRadius: 7))
                             }.buttonStyle(.plain).contextMenu {
                                 Button("Go to source") { store.reader.go(to: note.anchor) }
                                 Button("Pin as context") { store.pinNote(note) }
@@ -163,15 +163,22 @@ struct StudyPane: View {
                     ForEach(NoteKind.allCases, id: \.self) { kind in Button(kind.label) { store.updateNote(id: note.id) { $0.kind = kind } } }
                 } label: { Label(note.kind.label, systemImage: note.kind.symbol).font(.caption.weight(.medium)) }.menuStyle(.borderlessButton).fixedSize()
                 Spacer()
-                Picker("Understanding", selection: Binding(get: { store.workspace?.notes.first { $0.id == note.id }?.state ?? .open }, set: { value in store.updateNote(id: note.id) { $0.state = value } })) {
-                    ForEach(NoteState.allCases, id: \.self) { state in Text(state.label).tag(state) }
-                }.labelsHidden().fixedSize().accessibilityLabel("Note understanding state").font(.caption)
+                let understanding = Binding(get: { store.workspace?.notes.first { $0.id == note.id }?.state ?? .open }, set: { value in store.updateNote(id: note.id) { $0.state = value } })
+                if ThemeManager.shared.style == .vscode {
+                    // The theme's dropdown: a native pop-up takes the accent as its fill.
+                    VSDropdown(options: NoteState.allCases.map { ($0, $0.label) }, selection: understanding, width: 120)
+                        .accessibilityLabel("Note understanding state")
+                } else {
+                    Picker("Understanding", selection: understanding) {
+                        ForEach(NoteState.allCases, id: \.self) { state in Text(state.label).tag(state) }
+                    }.labelsHidden().fixedSize().accessibilityLabel("Note understanding state").font(.caption)
+                }
             }
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Source · PDF page \(note.anchor.pageIndex + 1)").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Go to source") { store.reader.go(to: note.anchor) }.buttonStyle(.link).font(.caption)
+                    Button("Go to source") { store.reader.go(to: note.anchor) }.workbenchLinkStyle().font(.caption)
                 }
                 if let image = image(for: note.anchor) {
                     Button { inspectedImage = StudyImagePreview(title: "\(note.kind.label) · PDF page \(note.anchor.pageIndex + 1)", image: image) } label: {
@@ -197,7 +204,7 @@ struct StudyPane: View {
                 Text(note.kind.isGlossary ? "Term or title" : note.kind == .comment ? "Title (optional)" : "Question").font(.headline)
                 TextField(note.kind.isGlossary ? "Name the term, symbol, or claim" : note.kind == .comment ? "By default, the first line of the note" : "What needs explaining?", text: binding(note, \.question), axis: .vertical)
                     .lineLimit(2...6).textFieldStyle(.plain).font(.system(size: 15, weight: .medium)).padding(10)
-                    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6)).accessibilityLabel("Study question or title")
+                    .workbenchInputBox().accessibilityLabel("Study question or title")
             }
             if note.kind.isGlossary {
                 input("Lookup names", placeholder: "One term or symbol per line, as it appears in the PDF", text: binding(note, \.lookupTerms))
@@ -217,17 +224,17 @@ struct StudyPane: View {
                 HStack {
                     Text(note.kind == .definition || note.kind == .notation ? "My understanding" : "My reasoning").font(.headline)
                     Spacer()
-                    Button(previewReasoning ? "Edit" : "Preview") { previewReasoning.toggle() }.buttonStyle(.link).font(.caption)
+                    Button(previewReasoning ? "Edit" : "Preview") { previewReasoning.toggle() }.workbenchLinkStyle().font(.caption)
                 }
                 if previewReasoning && !note.body.isEmpty { MathPreview(text: note.body) }
                 else {
                     TextEditor(text: binding(note, \.body)).font(.body).frame(minHeight: 110, maxHeight: 230).scrollContentBackground(.hidden)
-                        .padding(6).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6)).accessibilityLabel("My reasoning")
+                        .padding(6).workbenchInputBox().accessibilityLabel("My reasoning")
                     Text("Markdown and LaTeX supported").font(.caption).foregroundStyle(.secondary)
                 }
             }
             HStack(spacing: 10) {
-                Button { store.showQuestion = true } label: { Label("Get help…", systemImage: "text.bubble") }.buttonStyle(.borderedProminent)
+                Button { store.showQuestion = true } label: { Label("Get help…", systemImage: "text.bubble") }.workbenchButton(.primary)
                     .disabled(note.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || note.pendingRequestID != nil)
                 Button { store.pinNote(note) } label: { Image(systemName: "pin") }.help("Use this note’s source as context").buttonStyle(.borderless)
                 Spacer()
@@ -260,7 +267,8 @@ struct StudyPane: View {
                     ProgressView().controlSize(.small)
                     Text(store.browserStatus.isEmpty ? "Waiting for the assistant…" : store.browserStatus)
                     Button("Show") { store.questions.selectedID = note.pendingRequestID; store.questions.panel = "requests"; store.showBrowserSetup = true }
-                    Button("Cancel") { store.cancelQuestion(noteID: note.id) }
+                        .workbenchButton(compact: true)
+                    Button("Cancel") { store.cancelQuestion(noteID: note.id) }.workbenchButton(compact: true)
                 }.font(.caption).foregroundStyle(.secondary)
             }
             if showsStatisticsExperiments(note) {
@@ -268,13 +276,13 @@ struct StudyPane: View {
                     HStack {
                         Label("Experiments", systemImage: "slider.horizontal.3").font(.callout.weight(.medium))
                         Spacer()
-                        Button("Try ridge…") { openExperiment(for: note) }.buttonStyle(.link).font(.caption)
-                        Button("Lasso…") { openExperiment(for: note, kind: .lasso) }.buttonStyle(.link).font(.caption)
-                        Button("k-NN…") { openExperiment(for: note, kind: .nearestNeighbors) }.buttonStyle(.link).font(.caption)
+                        Button("Try ridge…") { openExperiment(for: note) }.workbenchLinkStyle().font(.caption)
+                        Button("Lasso…") { openExperiment(for: note, kind: .lasso) }.workbenchLinkStyle().font(.caption)
+                        Button("k-NN…") { openExperiment(for: note, kind: .nearestNeighbors) }.workbenchLinkStyle().font(.caption)
                             .help("Least squares and nearest neighbours on ESL’s simulated mixture (Figures 2.1–2.5)")
                         Button("Lab…") {
                             store.newLab(source: LabSource(pageIndex: note.anchor.pageIndex, region: note.anchor.region, label: note.title, quote: note.anchor.quote))
-                        }.buttonStyle(.link).font(.caption).help("A Python notebook from this note's source")
+                        }.workbenchLinkStyle().font(.caption).help("A Python notebook from this note's source")
                     }
                     if note.experiments.isEmpty {
                         Text("Predict, then explore: shrinkage with correlated predictors, or least squares against nearest neighbours. Record the result with this source.").font(.caption).foregroundStyle(.secondary)
@@ -301,7 +309,7 @@ struct StudyPane: View {
                     Spacer()
                     Button("Open in the Lab…") {
                         store.newLab(source: LabSource(pageIndex: note.anchor.pageIndex, region: note.anchor.region, label: note.title, quote: note.anchor.quote))
-                    }.buttonStyle(.link).font(.caption).help("A Python notebook from this note's source")
+                    }.workbenchLinkStyle().font(.caption).help("A Python notebook from this note's source")
                 }
             }
             Divider()
@@ -310,7 +318,7 @@ struct StudyPane: View {
                     HStack {
                         Label("Saved explanation", systemImage: "text.bubble").font(.headline)
                         Spacer()
-                        Button(editExplanation ? "Done" : "Edit") { editExplanation.toggle() }.buttonStyle(.link).font(.caption)
+                        Button(editExplanation ? "Done" : "Edit") { editExplanation.toggle() }.workbenchLinkStyle().font(.caption)
                     }
                     if editExplanation {
                         TextEditor(text: Binding(get: { store.workspace?.notes.first { $0.id == note.id }?.explanation?.body ?? "" }, set: { value in store.updateNote(id: note.id) { $0.explanation?.body = value } }))
@@ -326,21 +334,21 @@ struct StudyPane: View {
                         if steps > 0 {
                             Button { store.checkAnswerSteps(noteID: note.id) } label: {
                                 Label("Check \(steps) \(steps == 1 ? "step" : "steps")", systemImage: "checkmark.seal")
-                            }.buttonStyle(.link).help("Open the answer's displayed equations as a derivation: Lemma tests every step on random values, on this Mac.")
+                            }.workbenchLinkStyle().help("Open the answer's displayed equations as a derivation: Lemma tests every step on random values, on this Mac.")
                         }
                         let blocks = summary.codeBlocks
                         if blocks > 0 {
                             Button { store.openExplanationCode(noteID: note.id) } label: {
                                 Label(blocks == 1 ? "Open code in Lab" : "Open \(blocks) code blocks in Lab", systemImage: "flask")
-                            }.buttonStyle(.link).help("Copy the answer's Python into a notebook beside the page. Nothing runs until you run a cell.")
+                            }.workbenchLinkStyle().help("Copy the answer's Python into a notebook beside the page. Nothing runs until you run a cell.")
                         }
                         if let raw = explanation.conversationURL, let url = URL(string: raw) {
-                            Button("Conversation") { store.questions.showConversation(url); store.showBrowserSetup = true }.buttonStyle(.link).disabled(store.questions.webBusy)
+                            Button("Conversation") { store.questions.showConversation(url); store.showBrowserSetup = true }.workbenchLinkStyle().disabled(store.questions.webBusy)
                         }
                     }.font(.caption)
                 }
             } else {
-                HStack(spacing: 8) { Image(systemName: "doc.on.clipboard").foregroundStyle(.secondary); Button("Paste a copied explanation", action: store.pasteExplanation).buttonStyle(.link).font(.callout) }
+                HStack(spacing: 8) { Image(systemName: "doc.on.clipboard").foregroundStyle(.secondary); Button("Paste a copied explanation", action: store.pasteExplanation).workbenchLinkStyle().font(.callout) }
             }
         }
     }
@@ -352,11 +360,11 @@ struct StudyPane: View {
                         Label(note.isDue() ? "Due now" : "Next recall in \(ReviewScheduler.describe(max(60, (note.reviewDueAt ?? .now).timeIntervalSinceNow)))", systemImage: "calendar")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Remove") { store.removeFromReview(id: note.id) }.buttonStyle(.link).font(.caption)
+                        Button("Remove") { store.removeFromReview(id: note.id) }.workbenchLinkStyle().font(.caption)
                     } else {
                         Text("Not in review").font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Add to review") { store.addToReview(id: note.id) }.buttonStyle(.link).font(.caption)
+                        Button("Add to review") { store.addToReview(id: note.id) }.workbenchLinkStyle().font(.caption)
                     }
                 }
                 TextField("Recall prompt, e.g. “Why does the optimum lie on an axis?”", text: binding(note, \.recallPrompt), axis: .vertical)

@@ -10,7 +10,7 @@ Lemma's Chrome companion transfers a reviewed study question into the visible Ch
 
 ## Setup
 
-Build with `scripts/build-app.sh`, open `build/Lemma.app`, and use **Chrome companion → Prepare connection**. This registers the packaged `LemmaBrowserHost` executable in:
+Build with `scripts/build-app.sh`, open `build/Lemma.app`, and use **Assistants › Connections › Chrome Companion → Prepare Connection**. This registers the packaged `LemmaBrowserHost` executable in:
 
 ```text
 ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.lemma.browser.json

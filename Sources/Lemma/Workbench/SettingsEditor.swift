@@ -153,8 +153,8 @@ enum SettingsRegistry {
             .choice(QuestionProvider.allCases.map { ($0.rawValue, $0.label) }),
             default: QuestionProvider.chatGPTWeb.rawValue, common: true, string(LemmaPreferences.questionProvider, QuestionProvider.chatGPTWeb.rawValue))
         add(LemmaPreferences.quickAskMode, "Questions", "Sending", "Quick Questions",
-            "For ChatGPT Web, Review opens the prepared chat inside Lemma. Ask and save sends once. The other assistants always return the answer directly to Lemma.",
-            .choice([(WebQuestionMode.draft.rawValue, "Review in Lemma"), (WebQuestionMode.askAndSave.rawValue, "Ask and Save")]),
+            "For ChatGPT Web: Send now sends the question in Lemma's ChatGPT page at once; Review first prepares it there for you to check and send. The other assistants always answer directly. Each question can still choose.",
+            .choice([(WebQuestionMode.askAndSave.rawValue, "Send Now"), (WebQuestionMode.draft.rawValue, "Review First")]),
             default: LemmaPreferences.quickAskModeDefault.rawValue, common: true, string(LemmaPreferences.quickAskMode, LemmaPreferences.quickAskModeDefault.rawValue))
         add("questions.apiKeys", "Questions", "API Keys", "Keys",
             "Your OpenAI, Anthropic and Gemini API keys are stored in the macOS Keychain (items named “Lemma Assistant Keys”), never in settings or study files. Add, check or remove them in Assistants › Connections.",

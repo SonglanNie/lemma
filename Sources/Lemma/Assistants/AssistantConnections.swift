@@ -40,82 +40,112 @@ extension QuestionProvider {
     }
 }
 
-/// The six assistants, grouped by how Lemma reaches them.
+/// The six assistants, grouped by how Lemma reaches them, and the Chrome companion apart at the foot of the list.
 struct AssistantProviderList: View {
     @Bindable var runtime: QuestionRuntime
     let defaultProvider: String
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            group("In Lemma", [.chatGPTWeb])
-            group("Installed command-line tool", [.codex, .claudeCode])
-            group("Your API key", [.openAI, .anthropic, .gemini])
-            Spacer()
+        let companion = runtime.showsCompanion
+        return VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    group("In Lemma", [.chatGPTWeb])
+                    group("Installed command-line tool", [.codex, .claudeCode])
+                    group("Your API key", [.openAI, .anthropic, .gemini])
+                }
+                .padding(.bottom, 10)
+            }
+            Rectangle().fill(theme.hairline(.sideBarBorder)).frame(height: 1)
+            WorkbenchListRow(selected: companion) { runtime.showsCompanion = true } content: {
+                HStack(spacing: 8) {
+                    WorkbenchGlyph(codicon: "extensions", symbol: "puzzlepiece.extension", color: companion ? .listActiveSelectionForeground : .iconForeground)
+                    Text("Chrome Companion").font(.ui(13)).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text("arXiv").font(.ui(11)).foregroundStyle(theme[.descriptionForeground])
+                }
+            }
+            .padding(.vertical, 6)
+            .help("Optional: add the paper from Chrome's active arXiv tab")
         }
     }
 
     private func group(_ title: String, _ providers: [QuestionProvider]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(theme[.descriptionForeground]).padding(.leading, 8).padding(.bottom, 2)
+        VStack(alignment: .leading, spacing: 1) {
+            WorkbenchListCaption(title: title)
             ForEach(providers) { provider in row(provider) }
         }
     }
 
     private func row(_ provider: QuestionProvider) -> some View {
-        let selected = runtime.connectionProvider == provider
+        let selected = !runtime.showsCompanion && runtime.connectionProvider == provider
         let ready: Bool = switch provider.kind {
         case .api: runtime.keyPresence[provider] == true
         case .cli: if case .signedIn = runtime.signIns[provider] { true } else { false }
         case .web: runtime.webLoaded
         }
-        return Button { runtime.connectionProvider = provider } label: {
-            HStack(spacing: 6) {
-                Text(provider.label).lineLimit(1)
+        return WorkbenchListRow(selected: selected) { runtime.connectionProvider = provider; runtime.showsCompanion = false } content: {
+            HStack(spacing: 8) {
+                WorkbenchGlyph(codicon: provider.codicon, symbol: provider.symbol, color: selected ? .listActiveSelectionForeground : .iconForeground)
+                Text(provider.label).font(.ui(13)).lineLimit(1)
                 Spacer(minLength: 4)
-                if defaultProvider == provider.rawValue { Text("Default").font(.caption2).foregroundStyle(theme[.descriptionForeground]) }
-                if ready { Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(theme[.testingIconPassed]).accessibilityLabel("Ready") }
+                if defaultProvider == provider.rawValue {
+                    Text("Default").font(.ui(11)).foregroundStyle(selected ? theme[.listActiveSelectionForeground].opacity(0.75) : theme[.descriptionForeground])
+                }
+                if ready {
+                    WorkbenchGlyph(codicon: "pass-filled", symbol: "checkmark.circle.fill", color: .testingIconPassed, size: 14).accessibilityLabel("Ready")
+                }
             }
-            .padding(.horizontal, 8).padding(.vertical, 5)
-            .foregroundStyle(selected ? theme[.listActiveSelectionForeground] : theme[.foreground])
-            .background(selected ? theme[.listActiveSelectionBackground] : .clear, in: RoundedRectangle(cornerRadius: 5))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityLabel(provider.label + (defaultProvider == provider.rawValue ? ", default" : "") + (ready ? ", ready" : ""))
     }
 }
 
-/// ChatGPT Web: nothing loads until the reader clicks Connect (or asks a ChatGPT question).
+extension QuestionProvider {
+    /// The list's icon for each way of reaching an assistant: the embedded page, a command-line tool, an API key.
+    var codicon: String { switch kind { case .web: "globe"; case .cli: "terminal"; case .api: "key" } }
+    var symbol: String { switch kind { case .web: "globe"; case .cli: "terminal"; case .api: "key" } }
+}
+
+/// ChatGPT Web: what it is and, once the page is loaded, its controls. The page itself fills the sheet below them.
 struct WebConnectionPane: View {
     @Bindable var runtime: QuestionRuntime
     @Environment(\.theme) private var theme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("ChatGPT Web runs chatgpt.com inside Lemma with your usual account, model choice and limits. Its sign-in stays in this embedded browser, separate from Safari and Chrome.")
-                .font(.callout).fixedSize(horizontal: false, vertical: true)
+                .font(.ui(13)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
             Text("Sign in with your email address. Google and Apple sign-in may refuse to work inside an embedded browser; email sign-in works.")
-                .font(.caption).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
+                .font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
             if runtime.webLoaded || runtime.webBusy {
-                HStack {
-                    Button("New chat") { runtime.showConversation(ChatGPTSession.home) }.disabled(runtime.webBusy)
-                    Button("Reload") { runtime.web.view.reload() }.disabled(runtime.webBusy)
-                    Button("Close page") { runtime.closeWeb() }.disabled(runtime.webBusy)
+                HStack(spacing: 8) {
+                    Button("New Chat") { runtime.showConversation(ChatGPTSession.home) }.workbenchButton().disabled(runtime.webBusy)
+                    Button("Reload") { runtime.web.view.reload() }.workbenchButton().disabled(runtime.webBusy)
+                    Button("Close Page") { runtime.closeWeb() }.workbenchButton().disabled(runtime.webBusy)
                         .help("Unload chatgpt.com from Lemma. You stay signed in.")
-                    Spacer()
-                    Text("Questions use your normal ChatGPT access and limits.").font(.caption)
+                    Spacer(minLength: 8)
+                    Text("Questions use your normal ChatGPT access and limits.").font(.ui(12)).foregroundStyle(theme[.descriptionForeground])
+                        .lineLimit(1).truncationMode(.tail)
                 }
-                ChatGPTPageView(runtime: runtime).frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Spacer()
-                VStack(spacing: 8) {
-                    Button("Connect ChatGPT") { runtime.connectWeb() }.controlSize(.large)
-                    Text("Opens chatgpt.com here. Nothing is loaded until you click.").font(.caption).foregroundStyle(theme[.descriptionForeground])
-                }.frame(maxWidth: .infinity)
-                Spacer()
+                .padding(.top, 6)
             }
         }
+    }
+}
+
+/// Before ChatGPT's page is loaded: nothing loads until the reader clicks Connect (or asks a ChatGPT question).
+struct WebConnectPrompt: View {
+    @Bindable var runtime: QuestionRuntime
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(spacing: 10) {
+            WorkbenchGlyph(codicon: "globe", symbol: "globe", color: .descriptionForeground, size: 30).opacity(0.6).padding(.bottom, 2)
+            Button("Connect ChatGPT") { runtime.connectWeb() }.workbenchButton(.primary).controlSize(.large)
+            Text("Opens chatgpt.com here. Nothing is loaded until you click.").font(.ui(12)).foregroundStyle(theme[.descriptionForeground])
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -124,6 +154,7 @@ struct CLIConnectionPane: View {
     @Bindable var runtime: QuestionRuntime
     let provider: QuestionProvider
     @Environment(\.theme) private var theme
+    @State private var themes = ThemeManager.shared
     @State private var path = ""
     @State private var model = ""
     @State private var code = ""
@@ -131,54 +162,65 @@ struct CLIConnectionPane: View {
     @State private var automatic = "Automatic"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Lemma runs your installed \(provider.label) and uses the sign-in it already has: \(provider.accountKinds). You stay here while it answers.")
-                .font(.callout).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                if runtime.checking.contains(provider) { ProgressView().controlSize(.small) }
-                Text(runtime.connections[provider] ?? "Checking the installed CLI…").font(.callout).textSelection(.enabled)
+                .font(.ui(13)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .center, spacing: 10) {
+                statusIcon
+                Text(runtime.connections[provider] ?? "Checking the installed CLI…").font(.ui(13)).textSelection(.enabled)
                     .foregroundStyle(statusFailed ? theme[.errorForeground] : theme[.foreground]).fixedSize(horizontal: false, vertical: true)
-                Spacer()
-                Button("Check again") { Task { await runtime.check(provider) } }.disabled(runtime.checking.contains(provider))
+                Spacer(minLength: 8)
+                Button("Check Again") { Task { await runtime.check(provider) } }.workbenchButton().disabled(runtime.checking.contains(provider))
             }
-            HStack {
-                ForEach(QuestionCLI.signInMethods(provider), id: \.self) { method in
-                    Button(method.title) { runtime.signIn(provider, method: method) }.disabled(runtime.loginProvider != nil)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    ForEach(QuestionCLI.signInMethods(provider), id: \.self) { method in
+                        Button(method.title) { runtime.signIn(provider, method: method) }.workbenchButton().disabled(runtime.loginProvider != nil)
+                    }
+                    if let other = runtime.loginProvider, other != provider {
+                        Text("Signing in to \(other.label)…").font(.ui(12)).foregroundStyle(theme[.descriptionForeground])
+                        Button("Cancel That Sign-In", action: runtime.endLogin).workbenchButton()
+                    }
                 }
-                if let other = runtime.loginProvider, other != provider {
-                    Text("Signing in to \(other.label)…").font(.caption).foregroundStyle(theme[.descriptionForeground])
-                    Button("Cancel that sign-in", action: runtime.endLogin).controlSize(.small)
-                }
+                Text("Sign-in opens \(provider.company)'s own page in your default browser, and \(provider.label) keeps the credentials. You can also sign in in Terminal, or set \(provider.label) up with an API key; Lemma uses it as it is.")
+                    .font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Sign-in opens \(provider.company)'s own page in your default browser, and \(provider.label) keeps the credentials. You can also sign in in Terminal, or set \(provider.label) up with an API key; Lemma uses it as it is.")
-                .font(.caption).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
             if runtime.loginProvider == provider { loginArea }
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
-                    Text("Executable")
-                    TextField(automatic, text: $path)
-                        .onSubmit(save).accessibilityLabel("\(provider.label) executable path")
+                    Text("Executable").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                    WorkbenchTextField(placeholder: automatic, text: $path, accessibilityLabel: "\(provider.label) executable path", onSubmit: save)
                     Button("Choose…") {
                         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false
                         panel.treatsFilePackagesAsDirectories = true; panel.showsHiddenFiles = true
                         if panel.runModal() == .OK, let url = panel.url { path = url.path; save() }
-                    }
+                    }.workbenchButton()
                 }
                 GridRow {
-                    Text("Model")
-                    TextField("CLI default", text: $model).onSubmit(save).accessibilityLabel("\(provider.label) model")
-                    Button("Apply", action: save)
+                    Text("Model").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                    WorkbenchTextField(placeholder: "CLI default", text: $model, accessibilityLabel: "\(provider.label) model", onSubmit: save)
+                    Button("Apply", action: save).workbenchButton()
                 }
             }
             Text("Leave both empty for automatic discovery and the CLI's default model. Lemma looks in your login shell's PATH, Homebrew, ~/.local/bin, Volta, nvm, fnm, asdf and mise, and runs the CLI with its own folder first on PATH so it finds Node.")
-                .font(.caption).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+                .font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
         }
         .task(id: provider) {
             path = runtime.preferredPath(provider)
             model = runtime.chosenModel(provider)
             await runtime.check(provider)
             automatic = await runtime.resolvedExecutable(provider)?.path ?? "Automatic: not found"
+        }
+    }
+
+    @ViewBuilder private var statusIcon: some View {
+        if runtime.checking.contains(provider) {
+            if themes.style == .vscode { SpinningCodicon(name: "loading", size: 16, color: .foreground).frame(width: 16, height: 16) }
+            else { ProgressView().controlSize(.small).frame(width: 16, height: 16) }
+        } else if case .signedIn = runtime.signIns[provider] {
+            WorkbenchGlyph(codicon: "pass-filled", symbol: "checkmark.circle.fill", color: .testingIconPassed)
+        } else if statusFailed {
+            WorkbenchGlyph(codicon: "error", symbol: "exclamationmark.circle.fill", color: .errorForeground)
         }
     }
 
@@ -194,28 +236,28 @@ struct CLIConnectionPane: View {
         VStack(alignment: .leading, spacing: 8) {
             if runtime.loginURL != nil {
                 HStack {
-                    Text("Your browser should show \(provider.company)'s sign-in page. If it did not open:").font(.callout)
-                    Button("Open sign-in page", action: runtime.openLoginPage)
+                    Text("Your browser should show \(provider.company)'s sign-in page. If it did not open:").font(.ui(13))
+                    Button("Open Sign-In Page", action: runtime.openLoginPage).workbenchButton()
                 }
             }
             ScrollView {
-                Text(runtime.loginMessage).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                Text(runtime.loginMessage).font(.code(12)).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }.frame(maxHeight: 110)
             HStack {
-                TextField("Code, if the sign-in page shows one to paste here", text: $code).onSubmit(sendCode)
-                Button("Submit code", action: sendCode).disabled(code.isEmpty)
-                Button("Cancel sign-in", action: runtime.endLogin)
+                WorkbenchTextField(placeholder: "Code, if the sign-in page shows one to paste here", text: $code, onSubmit: sendCode)
+                Button("Submit Code", action: sendCode).workbenchButton(.primary).disabled(code.isEmpty)
+                Button("Cancel Sign-In", action: runtime.endLogin).workbenchButton()
             }
             if let command = runtime.loginCommand {
                 HStack(spacing: 6) {
-                    Text("Or in Terminal:").font(.caption)
-                    Text(command).font(.caption.monospaced()).textSelection(.enabled)
-                    Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.controlSize(.small)
+                    Text("Or in Terminal:").font(.ui(12))
+                    Text(command).font(.code(12)).textSelection(.enabled)
+                    Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(command, forType: .string) }.workbenchButton()
                 }.foregroundStyle(theme[.descriptionForeground])
             }
         }
-        .padding(10).background(theme[.textCodeBlockBackground], in: RoundedRectangle(cornerRadius: 6))
+        .padding(10).background(theme[.textCodeBlockBackground], in: RoundedRectangle(cornerRadius: themes.style == .vscode ? 4 : 6))
     }
 
     private func sendCode() {
@@ -241,6 +283,7 @@ struct APIConnectionPane: View {
     @Bindable var runtime: QuestionRuntime
     let provider: QuestionProvider
     @Environment(\.theme) private var theme
+    @State private var themes = ThemeManager.shared
     @State private var key = ""
     @State private var replacing = false
     @State private var model = ""
@@ -248,57 +291,83 @@ struct APIConnectionPane: View {
 
     var body: some View {
         let saved = runtime.keyPresence[provider] == true
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Lemma sends your question straight to \(provider.company) with your own API key. Usage is billed to your \(provider.company) account; Lemma has no account or server of its own.")
-                .font(.callout).fixedSize(horizontal: false, vertical: true)
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 12) {
+                .font(.ui(13)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
-                    Text("API key")
+                    Text("API key").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
                     if saved && !replacing {
-                        HStack(spacing: 10) {
-                            Label("Saved in your Keychain", systemImage: "key.fill")
-                            Button("Replace…") { replacing = true; problem = nil }
-                            Button("Remove", role: .destructive, action: remove)
+                        HStack(spacing: 8) {
+                            WorkbenchGlyph(codicon: "key", symbol: "key.fill", color: .testingIconPassed, size: 14)
+                            Text("Saved in your Keychain").font(.ui(13))
+                            Spacer(minLength: 8)
+                            Button("Replace…") { replacing = true; problem = nil }.workbenchButton()
+                            Button("Remove", role: .destructive, action: remove).workbenchButton()
                         }
                     } else {
-                        HStack {
-                            SecureField("Paste your \(provider.company) API key", text: $key).onSubmit(save)
-                                .accessibilityLabel("\(provider.company) API key")
-                            Button("Save", action: save).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            if replacing { Button("Cancel") { replacing = false; key = "" } }
+                        HStack(spacing: 8) {
+                            WorkbenchTextField(placeholder: "Paste your \(provider.company) API key", text: $key, secure: true,
+                                               accessibilityLabel: "\(provider.company) API key", onSubmit: save)
+                            Button("Save", action: save).workbenchButton(.primary).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            if replacing { Button("Cancel") { replacing = false; key = "" }.workbenchButton() }
                         }
                     }
                 }
                 GridRow {
-                    Text("Model")
-                    HStack {
-                        TextField(provider.defaultModel, text: $model).onSubmit(applyModel).accessibilityLabel("\(provider.label) model")
-                        Menu("Choose") {
-                            ForEach(provider.suggestedModels, id: \.self) { choice in
-                                Button("\(choice.id): \(choice.note)") { model = choice.id; applyModel() }
-                            }
-                        }.fixedSize()
-                        Button("Apply", action: applyModel)
+                    Text("Model").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                    HStack(spacing: 8) {
+                        WorkbenchTextField(placeholder: provider.defaultModel, text: $model, accessibilityLabel: "\(provider.label) model", onSubmit: applyModel)
+                        modelMenu
+                        Button("Apply", action: applyModel).workbenchButton()
                     }
                 }
             }
             HStack(spacing: 10) {
-                Button("Check") { Task { await runtime.checkKey(provider) } }.disabled(!saved || runtime.checking.contains(provider))
-                if runtime.checking.contains(provider) { ProgressView().controlSize(.small) }
+                Button("Check") { Task { await runtime.checkKey(provider) } }.workbenchButton().disabled(!saved || runtime.checking.contains(provider))
+                if runtime.checking.contains(provider) {
+                    if themes.style == .vscode { SpinningCodicon(name: "loading", size: 16, color: .foreground).frame(width: 16, height: 16) }
+                    else { ProgressView().controlSize(.small) }
+                }
                 if let text = problem ?? runtime.apiStatus[provider] {
-                    Text(text).font(.callout).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    Text(text).font(.ui(13)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(problem != nil || runtime.apiStatusFailed.contains(provider) ? theme[.errorForeground] : theme[.foreground])
                 }
-                Spacer()
-                if let page = provider.apiKeyPage { Link("Get an API key", destination: page) }
+                Spacer(minLength: 8)
+                if let page = provider.apiKeyPage {
+                    WorkbenchLink(title: "Get an API key", codicon: "link-external", symbol: "arrow.up.right.square") { NSWorkspace.shared.open(page) }
+                        .help(page.absoluteString)
+                }
             }
             Text("Check sends one request to \(provider.apiHost ?? provider.company) that confirms the key and the model without generating text. Nothing is sent until you click Check or ask a question. Leave the model empty for \(provider.defaultModel).")
-                .font(.caption).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+                .font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
         }
         .task(id: provider) {
             model = runtime.chosenModel(provider); key = ""; replacing = false; problem = nil
             runtime.refreshKeys()
+        }
+    }
+
+    /// The suggested models, in a native menu under a button drawn as the others are.
+    @ViewBuilder private var modelMenu: some View {
+        if themes.style == .vscode {
+            VSMenu(items: {
+                provider.suggestedModels.map { choice in .action("\(choice.id): \(choice.note)", checked: choice.id == model) { model = choice.id; applyModel() } }
+            }) {
+                HStack(spacing: 4) { Text("Choose"); Codicon("chevron-down", size: 12) }
+                    .font(.ui(12)).foregroundStyle(theme[.buttonSecondaryForeground])
+                    .padding(.horizontal, 8).frame(height: 26)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(theme[.buttonSecondaryBackground]))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(theme.border(.buttonBorder), lineWidth: 1))
+            }
+            .fixedSize()
+            .help("Models \(provider.company) suggests")
+        } else {
+            Menu("Choose") {
+                ForEach(provider.suggestedModels, id: \.self) { choice in
+                    Button("\(choice.id): \(choice.note)") { model = choice.id; applyModel() }
+                }
+            }.fixedSize()
         }
     }
 
@@ -319,6 +388,38 @@ struct APIConnectionPane: View {
             model = value; problem = nil
             runtime.apiStatus[provider] = "Questions will use \(runtime.model(for: provider))."; runtime.apiStatusFailed.remove(provider)
         } catch { problem = error.localizedDescription }
+    }
+}
+
+/// The Chrome companion: an optional extension for arXiv Quick Add, set up once. It is not an assistant.
+struct ChromeCompanionPane: View {
+    @Bindable var store: StudyStore
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Chrome Companion").font(.ui(15, weight: .semibold))
+            Text("Optional: add the paper from Chrome's active arXiv tab. Questions do not need it.")
+                .font(.ui(13)).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            step(1, "Prepare the connection between Chrome and Lemma.") {
+                Button("Prepare Connection", action: store.installChromeHost).workbenchButton()
+            }
+            step(2, "In Chrome's Extensions page, turn on Developer mode, choose Load unpacked, and pick the companion folder.") {
+                Button("Extensions") { store.openChrome(URL(string: "chrome://extensions/")!) }.workbenchButton()
+                Button("Show Companion Folder") { if let url = store.companionURL { NSWorkspace.shared.activateFileViewerSelecting([url]) } }.workbenchButton()
+            }
+        }
+    }
+
+    private func step<Actions: View>(_ number: Int, _ text: String, @ViewBuilder actions: () -> Actions) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(number)").font(.ui(11, weight: .semibold)).monospacedDigit().foregroundStyle(theme[.foreground])
+                .frame(width: 18, height: 18).background(Circle().fill(theme[.foreground].opacity(0.1)))
+            VStack(alignment: .leading, spacing: 8) {
+                Text(text).font(.ui(13)).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) { actions() }
+            }
+        }
     }
 }
 

@@ -78,9 +78,9 @@ struct SettingsView: View {
                         ForEach(QuestionProvider.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                     if let store { Button("Connect assistants…") { store.showBrowserSetup = true } }
-                    Picker("Quick questions", selection: $quickAskMode) {
-                        Text("Review in Lemma").tag(WebQuestionMode.draft.rawValue)
-                        Text("Ask and save").tag(WebQuestionMode.askAndSave.rawValue)
+                    Picker("Quick questions to ChatGPT", selection: $quickAskMode) {
+                        Text("Send now").tag(WebQuestionMode.askAndSave.rawValue)
+                        Text("Review first").tag(WebQuestionMode.draft.rawValue)
                     }
                     Text("ChatGPT Web opens inside Lemma. Codex and Claude Code run your installed CLI with the sign-in it already has. The OpenAI, Anthropic and Gemini APIs use your own API key, kept in your Keychain. Only the ticked context and the draft are sent, and only to the assistant you choose. Every answer is saved with its source; you can keep reading while it arrives.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

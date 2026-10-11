@@ -25,6 +25,25 @@ final class BrowserTests: XCTestCase {
         XCTAssertEqual(try mailbox.packet(packet.id).noteID, packet.noteID)
     }
 
+    /// Images and the draft can be fetched for an hour; an answer can still be saved for a day, since a reader may review
+    /// a draft for a while and a thinking model may answer slowly.
+    func testAnAnswerArrivingAfterAnHourIsStillSaved() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let mailbox = BrowserMailbox(root: root)
+        var packet = BrowserPacket(noteID: UUID(), mode: .draft, prompt: "Explain this step.", images: [BrowserImage(name: "source-1.png", label: "Source A", byteCount: 3)])
+        packet.createdAt = .now.addingTimeInterval(-2 * 3600)
+        try mailbox.prepare(packet, imageData: ["source-1.png": Data([1, 2, 3])])
+        XCTAssertThrowsError(try mailbox.imageChunk(requestID: packet.id, name: "source-1.png", index: 0), "Transfers stop after an hour.")
+        try mailbox.saveResult(BrowserResult(requestID: packet.id, status: "complete", answer: "Late but complete.", conversationURL: "https://chatgpt.com/c/late"))
+        XCTAssertEqual(try mailbox.result(packet.id)?.answer, "Late but complete.")
+        XCTAssertEqual(try mailbox.packet(packet.id, maximumAge: .infinity).prompt, "Explain this step.")
+        var stale = BrowserPacket(noteID: UUID(), mode: .askAndSave, prompt: "Old", images: [])
+        stale.createdAt = .now.addingTimeInterval(-2 * 86_400)
+        try mailbox.prepare(stale, imageData: [:])
+        XCTAssertThrowsError(try mailbox.saveResult(BrowserResult(requestID: stale.id, status: "complete", answer: "Too late")))
+    }
+
     func testNativeFramePreservesUnicodeAndRejectsTruncation() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: url) }

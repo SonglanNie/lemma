@@ -12,6 +12,8 @@ struct QuestionSheet: View {
     @State private var loading = true
     @State private var noteID: UUID?
     @AppStorage(LemmaPreferences.questionProvider) private var providerName = QuestionProvider.chatGPTWeb.rawValue
+    @Environment(\.theme) private var theme
+    @State private var themes = ThemeManager.shared
     private var provider: QuestionProvider { QuestionProvider(rawValue: providerName) ?? .chatGPTWeb }
 
     private var note: StudyNote? { store.workspace?.notes.first { $0.id == noteID } }
@@ -28,63 +30,77 @@ struct QuestionSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Prepare your question").font(.title2.weight(.semibold))
-                    Text("Choose the help and the context, then review the exact draft.").foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Assistants…") { store.showQuestion = false; DispatchQueue.main.async { store.showBrowserSetup = true } }
-            }.padding(.horizontal, 26).padding(.top, 22).padding(.bottom, 12)
-            Divider()
+            WorkbenchSheetHeader(codicon: "comment-discussion", symbol: "text.bubble", title: "Prepare your question") {
+                EmptyView()
+            } actions: {
+                Button("Assistants…") { store.showQuestion = false; DispatchQueue.main.async { store.showBrowserSetup = true } }.workbenchButton()
+            }
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Choose the help and the context, then review the exact draft.").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
                     HStack(alignment: .top, spacing: 16) {
                         if let note, let image = store.image(for: note.anchor) {
-                            Image(nsImage: image).resizable().scaledToFit().frame(width: 210, height: 92).padding(6).background(.white, in: RoundedRectangle(cornerRadius: 5))
+                            Image(nsImage: image).resizable().scaledToFit().frame(width: 210, height: 92).padding(6).background(.white, in: RoundedRectangle(cornerRadius: 4))
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Source A · PDF page \((note?.anchor.pageIndex ?? 0) + 1)").font(.headline)
-                            Picker("Kind of help", selection: $style) {
-                                ForEach(QuestionStyle.allCases) { value in Text(value.label).tag(value) }
-                            }.pickerStyle(.menu).fixedSize()
+                            Text("Source A · PDF page \((note?.anchor.pageIndex ?? 0) + 1)").font(.ui(13, weight: .semibold))
+                            HStack(spacing: 8) {
+                                Text("Kind of help").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                                if themes.style == .vscode {
+                                    VSDropdown(options: QuestionStyle.allCases.map { ($0, $0.label) }, selection: $style).accessibilityLabel("Kind of help")
+                                } else {
+                                    Picker("Kind of help", selection: $style) {
+                                        ForEach(QuestionStyle.allCases) { value in Text(value.label).tag(value) }
+                                    }.pickerStyle(.menu).labelsHidden().fixedSize()
+                                }
+                            }
                             Text("\(selection.imageCount) of \(ContextSelection.maximumImages) images · only the ticked context and the draft below are shared.")
-                                .font(.caption).foregroundStyle(tooManyImages ? Color.red : Color.secondary).fixedSize(horizontal: false, vertical: true)
+                                .font(.ui(12)).foregroundStyle(tooManyImages ? theme[.errorForeground] : theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     contextList
                     HStack {
-                        Text("Draft").font(.headline)
+                        Text("Draft").font(.ui(13, weight: .semibold))
                         Spacer()
                         if needsUpdate {
-                            Text("Update the edited draft to apply your choices.").font(.caption).foregroundStyle(.secondary)
-                            Button("Update draft", action: regenerate)
+                            Text("Update the edited draft to apply your choices.").font(.ui(12)).foregroundStyle(theme[.descriptionForeground])
+                            Button("Update Draft", action: regenerate).workbenchButton()
                         }
                     }
-                    TextEditor(text: $prompt).font(.body).frame(height: 230)
-                        .padding(6).background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6)).accessibilityLabel("Prepared question text")
-                    HStack {
-                        Button("Copy text") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(prompt, forType: .string) }
-                        Button("Copy source image", action: store.copySource)
+                    TextEditor(text: $prompt).font(.body).frame(height: 230).scrollContentBackground(.hidden)
+                        .padding(6).workbenchInputBox().accessibilityLabel("Prepared question text")
+                    HStack(spacing: 8) {
+                        Button("Copy Text") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(prompt, forType: .string) }.workbenchButton()
+                        Button("Copy Source Image", action: store.copySource).workbenchButton()
                     }
-                }.padding(.horizontal, 26).padding(.vertical, 14)
+                }.padding(.horizontal, 24).padding(.vertical, 16)
             }
-            Divider()
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    Picker("Assistant", selection: $providerName) {
-                        ForEach(QuestionProvider.allCases) { Text($0.label).tag($0.rawValue) }
-                    }.pickerStyle(.menu).fixedSize()
+                HStack(spacing: 8) {
+                    Text("Assistant").font(.ui(13)).foregroundStyle(theme[.descriptionForeground])
+                    if themes.style == .vscode {
+                        VSDropdown(options: QuestionProvider.allCases.map { ($0.rawValue, $0.label) }, selection: $providerName).accessibilityLabel("Assistant")
+                    } else {
+                        Picker("Assistant", selection: $providerName) {
+                            ForEach(QuestionProvider.allCases) { Text($0.label).tag($0.rawValue) }
+                        }.pickerStyle(.menu).labelsHidden().fixedSize()
+                    }
                     Spacer()
-                    Button("Cancel") { store.showQuestion = false }.keyboardShortcut(.cancelAction)
+                    Button("Cancel") { store.showQuestion = false }.keyboardShortcut(.cancelAction).workbenchButton()
                     Group {
-                        if provider == .chatGPTWeb { Button("Review in Lemma") { handoff(.draft) }.controlSize(.large) }
-                        Button("Ask and save") { handoff(.askAndSave) }.buttonStyle(.borderedProminent).controlSize(.large)
+                        if provider == .chatGPTWeb { Button("Prepare in ChatGPT") { handoff(.draft) }.workbenchButton() }
+                        Button("Ask and save") { handoff(.askAndSave) }.workbenchButton(.primary)
                     }.disabled(loading || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || needsUpdate || tooManyImages || missingKey)
                 }
-                Text(sendingCaption).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.padding(.horizontal, 26).padding(.vertical, 14)
-        }.frame(width: 760, height: Self.height)
+                Text(sendingCaption).font(.ui(12)).foregroundStyle(missingKey ? theme[.editorWarningForeground] : theme[.descriptionForeground]).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24).padding(.vertical, 14)
+            .background(theme[.sideBarBackground])
+            .overlay(alignment: .top) { Rectangle().fill(theme.hairline(.sideBarBorder)).frame(height: 1) }
+        }
+        .frame(width: 760, height: Self.height)
+        .foregroundStyle(theme[.foreground])
+        .background(theme[.editorBackground])
             .task { store.questions.refreshKeys(); await load() }
             .onChange(of: style) { _, _ in refreshIfUnedited() }
             .onChange(of: selection) { _, _ in refreshIfUnedited() }
@@ -96,7 +112,7 @@ struct QuestionSheet: View {
     private var sendingCaption: String {
         if missingKey { return "Add your \(provider.company) API key in Assistants › Connections first. It is kept in your Keychain." }
         return switch provider.kind {
-        case .web: "Review in Lemma prepares the draft in the embedded ChatGPT page for you to send; Ask and save sends it once. Lemma saves the completed answer to this source note."
+        case .web: "Prepare in ChatGPT puts the draft in Lemma's ChatGPT page for you to check and send; Ask and save sends it at once. Lemma saves the completed answer to this source note."
         case .cli: "Ask and save runs your installed \(provider.label) with this draft and the ticked images, and saves the answer to this source note. You can keep reading in Lemma."
         case .api: "Ask and save sends this draft and the ticked images to \(provider.company) with your API key, and saves the answer to this source note. You can keep reading in Lemma."
         }
@@ -105,8 +121,8 @@ struct QuestionSheet: View {
     private var contextList: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Context").font(.headline)
-                if loading { ProgressView().controlSize(.small); Text("Finding cited equations and figures…").font(.caption).foregroundStyle(.secondary) }
+                Text("Context").font(.ui(13, weight: .semibold))
+                if loading { ProgressView().controlSize(.small); Text("Finding cited equations and figures…").font(.ui(12)).foregroundStyle(theme[.descriptionForeground]) }
             }
             VStack(alignment: .leading, spacing: 10) {
                 group("From the book") {
@@ -148,20 +164,38 @@ struct QuestionSheet: View {
 
     private func group<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            Text(title).font(.ui(11.5, weight: .medium)).foregroundStyle(theme[.descriptionForeground])
             content()
         }
     }
 
     private func row(isOn: Binding<Bool>, title: String, detail: String, image: NSImage? = nil) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            Toggle(isOn: isOn) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.callout.weight(.medium)).lineLimit(2)
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            if themes.style == .vscode {
+                // VS Code's checkbox, the whole row toggling it, as the Ask widget's context rows do.
+                Button { isOn.wrappedValue.toggle() } label: {
+                    HStack(alignment: .center, spacing: 9) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 3).fill(theme[.checkboxBackground])
+                            RoundedRectangle(cornerRadius: 3).stroke(theme[.checkboxBorder], lineWidth: 1)
+                            if isOn.wrappedValue { Codicon("check", size: 13).foregroundStyle(theme[.checkboxForeground]) }
+                        }.frame(width: 16, height: 16)
+                        rowText(title, detail)
+                    }.contentShape(Rectangle())
                 }
-            }.toggleStyle(.checkbox).frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("\(title), \(detail)").accessibilityValue(isOn.wrappedValue ? "included" : "left out")
+            } else {
+                Toggle(isOn: isOn) { rowText(title, detail) }.toggleStyle(.checkbox).frame(maxWidth: .infinity, alignment: .leading)
+            }
             if let image { Image(nsImage: image).resizable().scaledToFit().frame(width: 170, height: 46).background(.white) }
+        }
+    }
+
+    private func rowText(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.ui(13, weight: .medium)).lineLimit(2)
+            Text(detail).font(.ui(11.5)).foregroundStyle(theme[.descriptionForeground]).lineLimit(2)
         }
     }
 

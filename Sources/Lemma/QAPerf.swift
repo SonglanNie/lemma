@@ -187,3 +187,75 @@ private final class BusyMeter: @unchecked Sendable {
         return total
     }
 }
+
+/// A trackpad gesture for QA copies, sent inside the process to the view under a point of a window, as AppKit sends a
+/// scroll event to the view its hit test finds: began, `steps` changes of (dx, dy) points, ended, then `momentum`
+/// momentum events. It shows who receives the gesture and whether the scroll views around the point follow it at once.
+@MainActor
+enum QAWheel {
+    static func perform(window: NSWindow, info: [String: String], output: URL) async throws {
+        guard let content = window.contentView else { throw QAHooks.QAError.missing("window content") }
+        // x and y are points from the window's top left; target=math aims at the middle of the first typeset preview on
+        // screen, target=mathAbove at 12 points above it (the pane's own content, for comparison).
+        var point = NSPoint(x: Double(info["x"] ?? "") ?? 0, y: window.frame.height - (Double(info["y"] ?? "") ?? 0))
+        if let aim = info["target"] {
+            func previews(in view: NSView) -> [MathWebView] { (view as? MathWebView).map { [$0] } ?? view.subviews.flatMap(previews) }
+            // What of each preview its scroll view shows, in window coordinates.
+            func shown(_ preview: MathWebView) -> NSRect {
+                let frame = preview.convert(preview.bounds, to: nil)
+                guard let clip = preview.enclosingScrollView?.contentView else { return frame }
+                return frame.intersection(clip.convert(clip.bounds, to: nil))
+            }
+            guard let preview = previews(in: content).first(where: { !shown($0).isEmpty }) else { throw QAHooks.QAError.missing("a typeset preview on screen") }
+            let visible = shown(preview)
+            point = NSPoint(x: visible.midX, y: aim == "mathAbove" ? visible.maxY + 12 : visible.midY)
+        }
+        guard let target = content.hitTest(point) else { throw QAHooks.QAError.missing("a view at that point") }
+        let steps = Int(info["steps"] ?? "") ?? 8, momentum = Int(info["momentum"] ?? "") ?? 6
+        let dx = Double(info["dx"] ?? "") ?? 0, dy = Double(info["dy"] ?? "") ?? -24
+        var scrollViews: [NSScrollView] = []
+        var chain: [String] = []
+        var view: NSView? = target
+        while let current = view {
+            chain.append(String(describing: type(of: current)))
+            if let scroll = current as? NSScrollView { scrollViews.append(scroll) }
+            view = current.superview
+        }
+        let screen = window.convertPoint(toScreen: point)
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let location = CGPoint(x: screen.x, y: primaryHeight - screen.y)
+        var log: [[String: Any]] = []
+        func record(_ label: String) {
+            log.append(["event": label, "offsets": scrollViews.map { Double($0.documentVisibleRect.origin.y) }])
+        }
+        // Phases as CGEvent numbers them: began 1, changed 2, ended 4; momentum begin 1, continue 2, end 3.
+        var plan: [(label: String, phase: Int64, momentum: Int64, dx: Double, dy: Double)] = [("began", 1, 0, dx, dy)]
+        plan += Array(repeating: ("changed", 2, 0, dx, dy), count: max(0, steps - 1))
+        plan.append(("ended", 4, 0, 0, 0))
+        if momentum > 0 {
+            plan.append(("momentumBegin", 0, 1, dx * 0.8, dy * 0.8))
+            for index in 1..<max(2, momentum) { let decay = pow(0.8, Double(index + 1)); plan.append(("momentum", 0, 2, dx * decay, dy * decay)) }
+            plan.append(("momentumEnd", 0, 3, 0, 0))
+        }
+        record("start")
+        for step in plan {
+            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: Int32(step.dy), wheel2: Int32(step.dx), wheel3: 0) else { continue }
+            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+            event.setIntegerValueField(.scrollWheelEventScrollPhase, value: step.phase)
+            event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: step.momentum)
+            event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: step.dy)
+            event.setDoubleValueField(.scrollWheelEventPointDeltaAxis2, value: step.dx)
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: step.dy)
+            event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: step.dx)
+            event.location = location
+            guard let scroll = NSEvent(cgEvent: event) else { continue }
+            target.scrollWheel(with: scroll)
+            try await Task.sleep(for: .milliseconds(16))
+            record(step.label)
+        }
+        try await Task.sleep(for: .milliseconds(700))
+        record("settled")
+        let result: [String: Any] = ["views": chain, "scrollViews": scrollViews.count, "point": [point.x, window.frame.height - point.y], "log": log]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]).write(to: output)
+    }
+}

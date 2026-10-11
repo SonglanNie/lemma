@@ -1312,18 +1312,17 @@ final class StudyStore {
     }
 
     var preparedPrompt: String { prompt(style: .explanation, pinIDs: Set(workspace?.pins.map(\.id) ?? [])) }
+    /// The current note's question as Ask composes it, with its passage, its section and the chosen pins (the cited
+    /// equations, found as the question opens, are left out).
     func prompt(style: QuestionStyle, pinIDs: Set<UUID>) -> String {
         guard let workspace, let note = currentNote else { return "" }
-        var prompt = "I am studying \(workspace.title).\nSource A: PDF page \(note.anchor.pageIndex + 1), page label \(note.anchor.pageLabel), shown in the attached source image.\n\nQuestion:\n\(note.question)\n"
-        if !note.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { prompt += "\nMy reasoning so far:\n\(note.body)\n" }
-        if !note.notation.isEmpty { prompt += "\nMy notation / dimensions (reader supplied):\n\(note.notation)\n" }
-        if !note.scope.isEmpty { prompt += "\nLocal scope (reader supplied):\n\(note.scope)\n" }
-        if !note.assumptions.isEmpty { prompt += "\nAssumptions to check (reader supplied):\n\(note.assumptions)\n" }
-        for (index, pin) in workspace.pins.filter({ pinIDs.contains($0.id) }).enumerated() {
-            prompt += "\nReference \(index + 1): \(pin.label), PDF page \(pin.anchor.pageIndex + 1), label \(pin.anchor.pageLabel), attached as a separate image.\n"
+        var candidates = QuestionContextCandidates(sourceText: note.anchor.quote.trimmingCharacters(in: .whitespacesAndNewlines), pins: workspace.pins)
+        if let index = references {
+            candidates.section = OutlineMap.section(containing: note.anchor.pageIndex, y: note.anchor.region.y + note.anchor.region.height, in: index.outline)?.title
         }
-        prompt += "\nUse the attached source regions as evidence. \(style.instruction) Identify any assumptions needed. If context is insufficient, say what is missing."
-        return prompt
+        var selection = ContextSelection.defaults(for: candidates)
+        selection.pins = pinIDs.intersection(Set(workspace.pins.map(\.id)))
+        return composition(note: note, style: style, candidates: candidates, selection: selection).prompt
     }
 
     func copyPrompt() { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(preparedPrompt, forType: .string); status = "Question copied." }
@@ -1357,7 +1356,7 @@ final class StudyStore {
     }
 
     /// Persists the source correlation before any provider receives the question.
-    func handOff(_ packet: BrowserPacket, imageData: [String: Data]) {
+    func handOff(_ packet: BrowserPacket, imageData: [String: Data], replacingDraft: Bool = false) {
         if (packet.provider ?? .chatGPTWeb) == .chatGPTWeb, questions.webBusy {
             error = "ChatGPT is already answering a question. Wait for it or cancel it in Assistants."; return
         }
@@ -1371,10 +1370,28 @@ final class StudyStore {
             if let urlOpener, (packet.provider ?? .chatGPTWeb) == .chatGPTWeb {
                 urlOpener(URL(string: "https://chatgpt.com/#lemma=\(packet.id.uuidString)")!)
             } else {
-                questions.start(packet, store: self)
+                questions.start(packet, store: self, replacingDraft: replacingDraft)
                 DispatchQueue.main.async { [weak self] in self?.showBrowserSetup = true }
             }
         } catch { self.error = "Could not prepare the Web question: \(error.localizedDescription)" }
+    }
+
+    /// Sends a question again as a new request: the same draft and images, to the same note, which must be in the open
+    /// book and not already waiting.
+    func askAgain(_ packet: BrowserPacket, replacingDraft: Bool = false) {
+        if let id = packet.workspaceID, workspace?.id != id, let book = library.first(where: { $0.id == id }) { reopen(book) }
+        guard let workspace, packet.workspaceID == nil || packet.workspaceID == workspace.id,
+              let note = workspace.notes.first(where: { $0.id == packet.noteID }) else {
+            error = "The question's note is no longer in its book. Ask from the passage again."; return
+        }
+        guard note.pendingRequestID == nil else { error = "This note is already waiting for an answer."; return }
+        do {
+            let directory = mailbox.directory(packet.id)
+            var data: [String: Data] = [:]
+            for image in packet.images { data[image.name] = try Data(contentsOf: directory.appendingPathComponent(image.name)) }
+            handOff(BrowserPacket(noteID: packet.noteID, mode: packet.mode, prompt: packet.prompt, images: packet.images,
+                                  provider: packet.provider, workspaceID: packet.workspaceID), imageData: data, replacingDraft: replacingDraft)
+        } catch { self.error = "Could not ask again: \(error.localizedDescription)" }
     }
 
     func openChrome(_ url: URL) {
@@ -1406,7 +1423,7 @@ final class StudyStore {
                 guard lastResults[id] != signature else { continue }
                 browserStatus = result.message ?? result.status.capitalized
                 guard ["complete", "error"].contains(result.status) else { lastResults[id] = signature; continue }
-                let packet = try? mailbox.packet(id)
+                let packet = try? mailbox.packet(id, maximumAge: .infinity)
                 var updated = workspace?.id == book.id ? workspace! : (try repository.load(id: book.id) ?? book)
                 guard let index = updated.notes.firstIndex(where: { $0.id == note.id && $0.pendingRequestID == id }) else { continue }
                 if result.status == "complete", let answer = result.answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
