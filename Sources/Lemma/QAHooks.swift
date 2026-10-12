@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 @preconcurrency import ScreenCaptureKit
 import LemmaCore
 
@@ -10,6 +11,8 @@ import LemmaCore
 @MainActor
 final class QAHooks: NSObject {
     static private(set) var shared: QAHooks?
+    /// The video being recorded (videoStart … videoStop).
+    static var recorder: QAVideoRecorder?
     let directory: URL
     weak var store: StudyStore?
 
@@ -58,6 +61,21 @@ final class QAHooks: NSObject {
         guard let store else { return }
         switch action {
         case "snapshot": try await snapshot(to: directory.appendingPathComponent("\(name).png"))
+        case "videoStart":
+            // fps= (60): a video of this app's windows into <name>.mov until videoStop (see QAVideoRecorder).
+            let recorder = QAVideoRecorder()
+            try await recorder.start(url: directory.appendingPathComponent("\(name).mov"), fps: Int(info["fps"] ?? "") ?? 60)
+            QAHooks.recorder = recorder
+        case "videoStop":
+            // Writes <name>.json: the wall-clock time of the video's first frame and the number of frames.
+            guard let recorder = QAHooks.recorder else { throw QAError.missing("video being recorded") }
+            QAHooks.recorder = nil
+            let result = try await recorder.stop()
+            let summary: [String: Any] = ["firstFrameWall": result.firstFrameWall, "frames": result.frames]
+            try JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted]).write(to: directory.appendingPathComponent("\(name).json"))
+        case "record":
+            // seconds= fps=: frames into <name>/ (see record(to:seconds:fps:)).
+            try await record(to: directory.appendingPathComponent(name, isDirectory: true), seconds: Double(info["seconds"] ?? "") ?? 10, fps: Double(info["fps"] ?? "") ?? 15)
         case "state":
             let data = try JSONSerialization.data(withJSONObject: store.qaState(), options: [.prettyPrinted, .sortedKeys])
             try data.write(to: directory.appendingPathComponent("\(name).json"))
@@ -82,6 +100,39 @@ final class QAHooks: NSObject {
 
     /// Captures every visible Lemma window composited as on screen: the main window with its popovers, sheets and menus.
     func snapshot(to url: URL) async throws {
+        let image = try await captureWindows()
+        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw QAError.missing("image") }
+        try png.write(to: url, options: .atomic)
+    }
+
+    /// Frames of Lemma's windows for a demo video, `seconds` long at about `fps` frames a second, written as JPEG into
+    /// `folder` with the time of each frame in times.txt. Other QA actions run meanwhile, between two frames.
+    func record(to folder: URL, seconds: Double, fps: Double) async throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let start = Date.now
+        var times: [String] = []
+        var index = 0
+        while Date.now.timeIntervalSince(start) < seconds {
+            let taken = Date.now
+            // A frame that cannot be taken (a window appearing or closing at that moment) is skipped.
+            guard let image = try? await captureWindows() else { try await Task.sleep(for: .milliseconds(20)); continue }
+            let url = folder.appendingPathComponent(String(format: "%05d.jpg", index))
+            // Encoded off the main thread, so the actions being recorded keep their pace.
+            Task.detached(priority: .utility) {
+                guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else { return }
+                CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.93] as CFDictionary)
+                CGImageDestinationFinalize(destination)
+            }
+            times.append(String(format: "%05d %.3f", index, taken.timeIntervalSince(start)))
+            index += 1
+            let spent = Date.now.timeIntervalSince(taken)
+            if spent < 1 / fps { try await Task.sleep(for: .seconds(1 / fps - spent)) }
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        try times.joined(separator: "\n").write(to: folder.appendingPathComponent("times.txt"), atomically: true, encoding: .utf8)
+    }
+
+    private func captureWindows() async throws -> CGImage {
         let content = try await SCShareableContent.currentProcess
         // Tiny windows (macOS's text insertion indicator beside a focused field) would otherwise be all that is captured.
         let windows = content.windows.filter { $0.isOnScreen && $0.windowLayer >= 0 && $0.windowLayer != 24 && $0.frame.width > 40 && $0.frame.height > 40 }
@@ -94,10 +145,7 @@ final class QAHooks: NSObject {
             let scale = NSScreen.screens.first?.backingScaleFactor ?? 2
             configuration.width = Int(main.frame.width * scale); configuration.height = Int(main.frame.height * scale)
             configuration.showsCursor = false
-            let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: main), configuration: configuration)
-            guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw QAError.missing("image") }
-            try png.write(to: url, options: .atomic)
-            return
+            return try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: main), configuration: configuration)
         }
         let union = windows.map(\.frame).reduce(CGRect.null) { $0.union($1) }
         guard let display = content.displays.first(where: { $0.frame.intersects(union) }) ?? content.displays.first else { throw QAError.missing("display") }
@@ -107,9 +155,7 @@ final class QAHooks: NSObject {
         configuration.sourceRect = CGRect(x: rect.minX - display.frame.minX, y: rect.minY - display.frame.minY, width: rect.width, height: rect.height)
         configuration.width = Int(rect.width * scale); configuration.height = Int(rect.height * scale)
         configuration.showsCursor = false
-        let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, including: windows), configuration: configuration)
-        guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { throw QAError.missing("image") }
-        try png.write(to: url, options: .atomic)
+        return try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(display: display, including: windows), configuration: configuration)
     }
 
     enum QAError: LocalizedError {
@@ -415,6 +461,9 @@ extension StudyStore {
         case "problems": showProblems()
         case "sideTab":
             if let editor = sideEditors.first(where: { sideTitle($0) == info["title"] }) { activateSideEditor(editor.id) }
+        case "sideClose":
+            // title= closes that side editor; without it, every one.
+            for editor in sideEditors where info["title"] == nil || sideTitle(editor) == info["title"] { closeSideEditor(editor.id) }
         case "checkAnswer":
             guard let note = workspace?.notes.first(where: { $0.title == info["title"] }) ?? currentNote else { throw QAHooks.QAError.missing("note") }
             checkAnswerSteps(noteID: note.id)
@@ -572,7 +621,10 @@ extension StudyStore {
             if info["fit"] == "width" { reader.fitWidth() } else if info["fit"] == "page" { reader.fit() }
             else if let value = info["value"].flatMap(Double.init) { reader.view?.autoScales = false; reader.view?.scaleFactor = CGFloat(value) }
         case "hoverReference":
-            guard reader.view?.qaHoverReference(Int(info["index"] ?? "") ?? 0) == true else { throw QAHooks.QAError.missing("reference on screen") }
+            // index=, or kind= and number=; off=1 ends the hover, as the pointer leaving the reference does.
+            guard reader.view?.qaHoverReference(Int(info["index"] ?? "") ?? 0, kind: info["kind"].flatMap(ReferenceKind.init(rawValue:)), number: info["number"],
+                                                off: info["off"] == "1") == true
+            else { throw QAHooks.QAError.missing("reference on screen") }
         case "inkStroke":
             // Draws a wavy stroke across the current page (synthesized events sent straight to the reader, not the system).
             guard let view = reader.view, let page = document?.page(at: reader.pageNumber - 1) else { throw QAHooks.QAError.missing("page") }
@@ -593,6 +645,84 @@ extension StudyStore {
             let x = Double(info["x"] ?? "") ?? 72, y = Double(info["y"] ?? "") ?? 400, w = Double(info["w"] ?? "") ?? 200, h = Double(info["h"] ?? "") ?? 80
             reader.regionMode = true
             view.qaDrag(onPage: reader.pageNumber - 1, through: [CGPoint(x: x, y: y + h), CGPoint(x: x + w / 2, y: y + h / 2), CGPoint(x: x + w, y: y)])
+        case "regionMode": reader.regionMode = info["value"] != "0"
+        case "activate":
+            // A demo recorded with the window active (traffic lights, caret, selection colours), while the reader is away.
+            NSApp.activate(ignoringOtherApps: true)
+            mainWindow?.makeKeyAndOrderFront(nil)
+        case "typeText":
+            // text= or file=, interval= (seconds a character), at= (first puts the caret before that text): types into the
+            // text view that has the keyboard, one character at a time, as a person types. Writes <name>.json with the
+            // wall-clock times of the first and last characters.
+            guard let textView = mainWindow?.firstResponder as? NSTextView else { throw QAHooks.QAError.missing("a text view with the keyboard") }
+            let text = try info["file"].map { try String(contentsOfFile: $0, encoding: .utf8) } ?? info["text"] ?? ""
+            if let at = info["at"] {
+                let range = (textView.string as NSString).range(of: at)
+                guard range.location != NSNotFound else { throw QAHooks.QAError.missing("“\(at)” in the text") }
+                textView.setSelectedRange(NSRange(location: range.location, length: 0))
+            }
+            let interval = Double(info["interval"] ?? "") ?? 0.06
+            var times: [Double] = []
+            for (index, character) in text.enumerated() {
+                if index > 0 { try await Task.sleep(for: .seconds(interval)) }
+                textView.insertText(String(character), replacementRange: textView.selectedRange())
+                times.append(Date().timeIntervalSince1970)
+            }
+            if let directory = QAHooks.shared?.directory {
+                try JSONSerialization.data(withJSONObject: ["first": times.first ?? 0, "last": times.last ?? 0, "count": times.count])
+                    .write(to: directory.appendingPathComponent("\(info["name"] ?? "typeText").json"))
+            }
+        case "caretRect":
+            // at=: writes <name>.json with the rectangle of that text's first character in the text view that has the
+            // keyboard, in window points from the window's top left.
+            guard let window = mainWindow, let textView = window.firstResponder as? NSTextView, let at = info["at"] else { throw QAHooks.QAError.missing("a text view and at=") }
+            let range = (textView.string as NSString).range(of: at)
+            guard range.location != NSNotFound else { throw QAHooks.QAError.missing("“\(at)” in the text") }
+            let screen = textView.firstRect(forCharacterRange: NSRange(location: range.location, length: 1), actualRange: nil)
+            let rect = [screen.minX - window.frame.minX, window.frame.maxY - screen.maxY, screen.width, screen.height]
+            if let directory = QAHooks.shared?.directory {
+                try JSONSerialization.data(withJSONObject: ["rect": rect]).write(to: directory.appendingPathComponent("\(info["name"] ?? "caretRect").json"))
+            }
+        case "glyphRects":
+            // Writes <name>.json with every character's rectangle in the text view that has the keyboard (window points from
+            // the window's top left), for drawing a caret over a recording.
+            guard let window = mainWindow, let textView = window.firstResponder as? NSTextView else { throw QAHooks.QAError.missing("a text view with the keyboard") }
+            let string = textView.string as NSString
+            var rects: [[Double]] = []
+            for index in 0..<string.length {
+                let screen = textView.firstRect(forCharacterRange: NSRange(location: index, length: 1), actualRange: nil)
+                rects.append([screen.minX - window.frame.minX, window.frame.maxY - screen.maxY, screen.width, screen.height])
+            }
+            if let directory = QAHooks.shared?.directory {
+                try JSONSerialization.data(withJSONObject: ["text": textView.string, "rects": rects])
+                    .write(to: directory.appendingPathComponent("\(info["name"] ?? "glyphRects").json"))
+            }
+        case "dragAnimate":
+            // page= x0= y0= x1= y1= (page points) duration=: a capture drag drawn at 60 steps a second with an eased motion.
+            // Writes <name>.json with the wall-clock times of the press and the release.
+            guard let view = reader.view, let x0 = info["x0"].flatMap(Double.init), let y0 = info["y0"].flatMap(Double.init),
+                  let x1 = info["x1"].flatMap(Double.init), let y1 = info["y1"].flatMap(Double.init) else { throw QAHooks.QAError.missing("reader, x0, y0, x1, y1") }
+            let page = (Int(info["page"] ?? "") ?? reader.pageNumber) - 1
+            let duration = Double(info["duration"] ?? "") ?? 0.9
+            view.qaDragStep(.leftMouseDown, onPage: page, at: CGPoint(x: x0, y: y0))
+            let start = Date()
+            var elapsed = 0.0
+            while elapsed < duration {
+                try await Task.sleep(for: .milliseconds(16))
+                elapsed = min(duration, Date().timeIntervalSince(start))
+                let u = elapsed / duration, e = u * u * (3 - 2 * u)
+                view.qaDragStep(.leftMouseDragged, onPage: page, at: CGPoint(x: x0 + (x1 - x0) * e, y: y0 + (y1 - y0) * e))
+            }
+            view.qaDragStep(.leftMouseUp, onPage: page, at: CGPoint(x: x1, y: y1))
+            if let directory = QAHooks.shared?.directory {
+                try JSONSerialization.data(withJSONObject: ["down": start.timeIntervalSince1970, "up": Date().timeIntervalSince1970])
+                    .write(to: directory.appendingPathComponent("\(info["name"] ?? "dragAnimate").json"))
+            }
+        case "dragStep":
+            // phase=down|drag|up page= (from 1) x= y= in page points: a capture drag one step at a time.
+            guard let view = reader.view, let x = info["x"].flatMap(Double.init), let y = info["y"].flatMap(Double.init) else { throw QAHooks.QAError.missing("reader, x, y") }
+            let type: NSEvent.EventType = info["phase"] == "down" ? .leftMouseDown : info["phase"] == "up" ? .leftMouseUp : .leftMouseDragged
+            view.qaDragStep(type, onPage: (Int(info["page"] ?? "") ?? reader.pageNumber) - 1, at: CGPoint(x: x, y: y))
         case "scrollBench":
             // Scrolls the reader through `pages` pages at `fps` (step points per frame) and writes <name>.json (see QAPerf).
             guard let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("QA folder") }
@@ -601,6 +731,9 @@ extension StudyStore {
             // A trackpad gesture at x, y (points from the window's top left); writes <name>.json (see QAWheel).
             guard let window = mainWindow, let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("window") }
             try await QAWheel.perform(window: window, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "wheel").json"))
+        case "mouseThrough":
+            // value=1 lets the reader's own pointer pass through the window (while a demo is recorded), value=0 restores it.
+            mainWindow?.ignoresMouseEvents = info["value"] != "0"
         case "inspector": showStudy = info["value"] != "0"
         case "sidebar": showLibrary = info["value"] != "0"
         default:

@@ -5,7 +5,9 @@
 <p align="center"><b>An IDE for reading mathematics.</b><br>
 A free, open-source PDF reader for the Mac that understands textbooks and papers the way an editor understands code.</p>
 
-<p align="center"><img src="docs/images/reading.png" width="900" alt="Lemma reading its sample book: the outline, the page with its references underlined, a peek at Theorem 1.3 opened from the proof that cites it, and the equations defined on the page"></p>
+<p align="center"><a href="https://github.com/fus3r/lemma/releases/latest"><b>Download for macOS</b></a> · macOS 15 or later, Apple silicon and Intel</p>
+
+<p align="center"><img src="docs/images/demo.gif" width="900" alt="Lemma reading its sample book: hovering “Theorem 1.3” previews it, clicking opens a peek beside the line, ⌘K asks about a proof with the equations it cites, proofs fold, and a derivation's wrong step is caught as a sign error, then fixed"></p>
 
 Open any mathematics, statistics or computer science PDF. Lemma reads it once, on your Mac, and the page becomes navigable: “Theorem 2.3”, “(3.44)”, “Figure 5”, “[12]” and index entries turn into links you can preview, peek at and follow without losing your place.
 
@@ -26,6 +28,8 @@ Open any mathematics, statistics or computer science PDF. Lemma reads it once, o
 **Questions with the right context.** Select a passage and press ⌘K. Lemma assembles the passage, the equations it cites and your notation, shows you the draft, and asks ChatGPT, Codex, Claude Code, or OpenAI, Anthropic or Google with your own API key. Answers return to the note that asked; their algebra can be checked step by step.
 
 **Everything else a reader needs.** Find in the book (⌘F) and search across your whole library, OCR for scanned pages, 45 free textbooks one click away, arXiv search, a minimap of your pages, Paper, Sepia and Night pages, and the choice between a VS Code-style workbench (Lemma's own themes, more than 80 VS Code themes, or any VS Code theme you install) and a classic Mac window.
+
+<p align="center"><img src="docs/images/reading.png" width="900" alt="Lemma reading its sample book: the outline, the page with its references underlined, a peek at Theorem 1.3 opened from the proof that cites it, and the equations defined on the page"></p>
 
 <p align="center"><img src="docs/images/welcome.png" width="900" alt="Lemma's Welcome page: open or drop a PDF, or start with a free textbook"></p>
 

@@ -1,0 +1,31 @@
+name: Book report
+description: How Lemma reads a particular book or paper, what it got right and what it got wrong.
+labels: [book report]
+body:
+  - type: markdown
+    attributes:
+      value: "Lemma reads every PDF with heuristics: numbering, references, proofs, the index. Telling us how it does on the book you read is one of the most useful contributions there is. Please don't attach a PDF you may not share; a title, an edition or an arXiv id is enough."
+  - type: input
+    id: book
+    attributes:
+      label: Book or paper
+      description: Title, authors and edition, an arXiv id, or a link to a free copy.
+    validations:
+      required: true
+  - type: textarea
+    id: right
+    attributes:
+      label: What worked
+      description: References that became links, proofs found, the outline, the index…
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What went wrong
+      description: Missed or wrong references, a theorem without its proof, wrong page numbers… Page numbers and a screenshot help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Lemma version
+      description: Lemma › About Lemma.

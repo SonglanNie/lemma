@@ -195,8 +195,8 @@ struct AssistantWebView: NSViewRepresentable {
     static func dismantleNSView(_ host: Host, coordinator: ()) { host.release() }
 
     final class Host: NSView {
-        private let webView: WKWebView
-        init(_ webView: WKWebView) {
+        private let webView: NSView
+        init(_ webView: NSView) {
             self.webView = webView
             super.init(frame: .zero)
             adopt()

@@ -28,7 +28,8 @@ final class AssistantDesignTests: XCTestCase {
 
     @MainActor
     func testTheChatGPTPageStaysInTheNewestHostWhenSwiftUITearsDownTheOldOne() {
-        let page = WKWebView(frame: .zero)
+        // A plain view stands in for the page's web view: the hosts only move it between them.
+        let page = NSView(frame: .zero)
         let shown = AssistantWebView.Host(page)
         XCTAssertTrue(page.superview === shown)
         // Switching tabs makes the new host first, then tears the old one down: the page went blank in 3.1.
@@ -42,6 +43,8 @@ final class AssistantDesignTests: XCTestCase {
 
     @MainActor
     func testScrollingOverATypesetPreviewScrollsItsPane() throws {
+        // The only test that makes a WebKit view; CI runners hung on it (October 2026).
+        try XCTSkipIf(ProcessInfo.processInfo.environment["CI"] != nil, "WebKit views are not created on CI runners")
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

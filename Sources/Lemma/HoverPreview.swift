@@ -54,7 +54,8 @@ final class HoverPreviewController {
     }
 
     private func canShow(_ hit: (mention: PageMention, pageIndex: Int)) -> Bool {
-        guard let view, let store, view.window?.isKeyWindow == true, NSEvent.pressedMouseButtons == 0,
+        // A QA copy recording in the background shows previews in a window that is not key.
+        guard let view, let store, view.window?.isKeyWindow == true || QAHooks.startsInBackground, NSEvent.pressedMouseButtons == 0,
               view.hoveredReference.map({ $0.mention == hit.mention && $0.pageIndex == hit.pageIndex }) == true,
               store.referencePeek == nil, store.definitionLookup == nil, store.quickAsk == nil, store.palette == nil,
               view.referencePopover?.isShown != true, view.definitionPopover?.popover.isShown != true else { return false }

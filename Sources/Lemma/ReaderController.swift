@@ -705,7 +705,10 @@ final class RegionPDFView: PDFView {
     private func updateReferenceHover(_ hit: (mention: PageMention, pageIndex: Int)?) {
         let changed = hit?.mention != hoveredReference?.mention || hit?.pageIndex != hoveredReference?.pageIndex
         hoveredReference = hit
-        if hit != nil { NSCursor.pointingHand.set() } else if changed { NSCursor.iBeam.set() }
+        // A QA copy recording in the background leaves the reader's pointer alone.
+        if !QAHooks.startsInBackground {
+            if hit != nil { NSCursor.pointingHand.set() } else if changed { NSCursor.iBeam.set() }
+        }
         if changed {
             updateOverlay()
             hoverPreview.store = controller?.owner
@@ -922,12 +925,19 @@ final class RegionPDFView: PDFView {
     // MARK: Visual review
 
     /// Hovers the `index`th reference on screen, as the pointer would (QA copies only).
-    func qaHoverReference(_ index: Int) -> Bool {
+    func qaHoverReference(_ index: Int, kind: ReferenceKind? = nil, number: String? = nil, off: Bool = false) -> Bool {
+        if off { updateReferenceHover(nil); return true }
         guard let document, let references = controller?.references else { return false }
         var found: [(mention: PageMention, pageIndex: Int)] = []
         for page in visiblePages {
             let pageIndex = document.index(for: page)
             for mention in references.mentions(onPage: pageIndex) where !mention.isDefinition { found.append((mention, pageIndex)) }
+        }
+        // kind= and number= name the reference (“theorem”, “1.3”) rather than its place among those on screen.
+        if kind != nil || number != nil {
+            guard let hit = found.first(where: { (kind == nil || $0.mention.key.kind == kind) && (number == nil || $0.mention.key.number == number) }) else { return false }
+            updateReferenceHover(hit)
+            return true
         }
         guard found.indices.contains(index) else { return false }
         updateReferenceHover(found[index])
@@ -937,14 +947,23 @@ final class RegionPDFView: PDFView {
     /// A drag along page points, delivered as mouse events made here and sent to this view's handlers directly: nothing
     /// goes through the window server (QA copies only, for ink and region capture).
     func qaDrag(onPage pageIndex: Int, through points: [CGPoint]) {
-        guard let window, let page = document?.page(at: pageIndex), let first = points.first, let last = points.last else { return }
-        func event(_ type: NSEvent.EventType, _ point: CGPoint) -> NSEvent? {
-            NSEvent.mouseEvent(with: type, location: convert(convert(point, from: page), to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                               windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        guard let first = points.first, let last = points.last else { return }
+        qaDragStep(.leftMouseDown, onPage: pageIndex, at: first)
+        for point in points.dropFirst() { qaDragStep(.leftMouseDragged, onPage: pageIndex, at: point) }
+        qaDragStep(.leftMouseUp, onPage: pageIndex, at: last)
+    }
+
+    /// One step of a drag, so that a demo can draw it at a person's pace: down, any number of drags, then up.
+    func qaDragStep(_ type: NSEvent.EventType, onPage pageIndex: Int, at point: CGPoint) {
+        guard let window, let page = document?.page(at: pageIndex),
+              let event = NSEvent.mouseEvent(with: type, location: convert(convert(point, from: page), to: nil), modifierFlags: [],
+                                             timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                                             eventNumber: 0, clickCount: 1, pressure: 1) else { return }
+        switch type {
+        case .leftMouseDown: mouseDown(with: event)
+        case .leftMouseUp: mouseUp(with: event)
+        default: mouseDragged(with: event)
         }
-        if let down = event(.leftMouseDown, first) { mouseDown(with: down) }
-        for point in points.dropFirst() { if let drag = event(.leftMouseDragged, point) { mouseDragged(with: drag) } }
-        if let up = event(.leftMouseUp, last) { mouseUp(with: up) }
     }
 
     /// Leaving ink or region mode drops the stroke in progress; the gutter and links come back (or go) with the mode.

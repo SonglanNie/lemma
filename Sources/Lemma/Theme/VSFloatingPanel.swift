@@ -49,7 +49,10 @@ final class VSFloatingPanel {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
-        panel.acceptsKey = interactive
+        // A QA copy recording in the background never takes the keyboard: a non-activating panel would receive what the
+        // reader types in their own apps.
+        let mayTakeKeyboard = !QAHooks.startsInBackground
+        panel.acceptsKey = interactive && mayTakeKeyboard
         panel.ignoresMouseEvents = !interactive
         panel.isReleasedWhenClosed = false
         panel.animationBehavior = .none
@@ -63,7 +66,7 @@ final class VSFloatingPanel {
         window.addChildWindow(panel, ordered: .above)
         panel.invalidateShadow()
         self.panel = panel
-        if takesKeyboard { panel.makeKey() }
+        if takesKeyboard && mayTakeKeyboard { panel.makeKey() }
         if interactive {
             monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
                 if let self, let panel = self.panel, event.window !== panel { self.close() }

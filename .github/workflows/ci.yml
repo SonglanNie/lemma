@@ -14,6 +14,6 @@ jobs:
       - name: Build
         run: swift build -c release
       - name: Core tests
-        run: swift test --filter LemmaCoreTests
+        run: script -q /dev/null swift test --filter LemmaCoreTests
       - name: App tests
-        run: swift test --filter LemmaAppTests
+        run: script -q /dev/null swift test --filter LemmaAppTests
