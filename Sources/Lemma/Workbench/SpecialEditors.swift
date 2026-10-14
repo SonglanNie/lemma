@@ -239,6 +239,10 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.2.1", "book", [
+            "Help › Report How Lemma Read This Book… opens GitHub's book report form with the book and what Lemma found in it already filled in: say what went wrong and submit it from your browser.",
+            "Lemma no longer stops responding while macOS asks whether it may read a library folder, or while a library folder's disk wakes up."
+        ]),
         ("Lemma 3.2: asking, redone", "comment-discussion", [
             "⌘K opens Ask under the passage, as VS Code's inline chat opens under a line: the passage, your question, the kind of help, and every item sent with it, each with its checkbox.",
             "Send now, or Review first in Lemma's ChatGPT page. A failed question is asked again with one click, to the same note.",

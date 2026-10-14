@@ -54,25 +54,38 @@ private final class LibraryFolderWatcher {
     var changed: (() -> Void)?
     /// Single PDFs followed at most (each holds a file descriptor); the others are found again at the next scan.
     static let fileLimit = 128
+    // The stream and the file sources are made, changed and ended on `queue` only. Making them opens the watched
+    // folders, every folder above them and the PDFs, and an open can wait: on macOS asking the reader whether Lemma may
+    // read Documents or Desktop, on a disk waking up, on a network volume. The main thread must not wait with it.
     nonisolated(unsafe) private var stream: FSEventStreamRef?
     nonisolated(unsafe) private var files: [String: DispatchSourceFileSystemObject] = [:]
     private var folders: [String] = []
-    private let queue = DispatchQueue(label: "com.lemma.library-watch", qos: .utility)
+    /// A stream was asked for and has not failed (the queue says so if it does).
+    private var streaming = false
+    nonisolated private let queue = DispatchQueue(label: "com.lemma.library-watch", qos: .utility)
 
     /// `folders` are path keys; `files` are paths, most important first.
     func watch(folders wanted: [String], files paths: [String]) {
         let folders = Array(Set(wanted)).sorted()
-        if folders != self.folders || (stream == nil && !folders.isEmpty) {
-            stopStream()
-            self.folders = folders
-            if !folders.isEmpty { startStream(folders) }
+        let restart = folders != self.folders || (!streaming && !folders.isEmpty)
+        self.folders = folders
+        if restart { streaming = !folders.isEmpty }
+        let wantedFiles = Set(paths.prefix(Self.fileLimit))
+        queue.async { [weak self] in
+            guard let self else { return }
+            if restart {
+                self.stopStream()
+                if !folders.isEmpty, !self.startStream(folders) {
+                    Task { @MainActor [weak self] in if self?.folders == folders { self?.streaming = false } }
+                }
+            }
+            for (path, source) in self.files where !wantedFiles.contains(path) { source.cancel(); self.files[path] = nil }
+            for path in wantedFiles where self.files[path] == nil { self.files[path] = self.watchFile(path) }
         }
-        let files = Set(paths.prefix(Self.fileLimit))
-        for (path, source) in self.files where !files.contains(path) { source.cancel(); self.files[path] = nil }
-        for path in files where self.files[path] == nil { self.files[path] = watchFile(path) }
     }
 
-    private func startStream(_ roots: [String]) {
+    /// On the queue. False when FSEvents refused the roots; the next scan asks again.
+    nonisolated private func startStream(_ roots: [String]) -> Bool {
         let filter = LibraryEventFilter(roots: roots) { [weak self] in
             Task { @MainActor in self?.changed?() }
         }
@@ -81,18 +94,21 @@ private final class LibraryFolderWatcher {
         // File-level events, so the filter can tell a PDF from a temporary file; one batch a second at most.
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagWatchRoot | kFSEventStreamCreateFlagUseCFTypes)
         guard let stream = FSEventStreamCreate(nil, libraryEventCallback, &context, roots as CFArray,
-                                               FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 1.0, flags) else { return }
+                                               FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 1.0, flags) else { return false }
         FSEventStreamSetDispatchQueue(stream, queue)
         FSEventStreamStart(stream)
         self.stream = stream
+        return true
     }
 
-    private func stopStream() {
+    /// On the queue.
+    nonisolated private func stopStream() {
         if let stream { FSEventStreamStop(stream); FSEventStreamInvalidate(stream); FSEventStreamRelease(stream) }
         stream = nil
     }
 
-    private func watchFile(_ path: String) -> DispatchSourceFileSystemObject? {
+    /// On the queue.
+    nonisolated private func watchFile(_ path: String) -> DispatchSourceFileSystemObject? {
         let descriptor = open(path, O_EVTONLY)
         guard descriptor >= 0 else { return nil }
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.delete, .rename, .revoke], queue: queue)
@@ -107,7 +123,7 @@ private final class LibraryFolderWatcher {
 
     /// The file moved or went: this watch ends, and the scan that follows watches it again where it is now.
     private func fileChanged(_ path: String) {
-        files.removeValue(forKey: path)?.cancel()
+        queue.async { [weak self] in self?.files.removeValue(forKey: path)?.cancel() }
         changed?()
     }
 

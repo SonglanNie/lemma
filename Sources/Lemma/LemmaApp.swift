@@ -168,6 +168,7 @@ struct LemmaApp: App {
                 Button("Assistants…") { store.showBrowserSetup = true }
                 Divider()
                 Button("Report an Issue…") { NSWorkspace.shared.open(LemmaLinks.newIssue()) }
+                Button("Report How Lemma Read This Book…") { store.reportBook() }.disabled(store.workspace == nil)
                 Button("Lemma on GitHub") { NSWorkspace.shared.open(LemmaLinks.site) }
                 Button("Privacy") { NSWorkspace.shared.open(LemmaLinks.privacy) }
                 Button("Acknowledgements") { store.showAcknowledgements = true }

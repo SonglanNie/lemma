@@ -164,6 +164,20 @@ final class WorkbenchTests: XCTestCase {
         store.studySection = .glossary
         XCTAssertFalse(store.visibleNotes.contains { $0.id == second.id }, "Margin notes are not glossary entries.")
     }
+
+    /// Help › Report How Lemma Read This Book… opens GitHub's book report form with the book and what Lemma found
+    /// already filled in, under the field ids of `.github/ISSUE_TEMPLATE/book_report.yml`.
+    func testBookReportOpensTheFormWithTheBookAndWhatLemmaFound() throws {
+        let url = LemmaLinks.bookReport(book: "The Elements of Statistical Learning", found: "Lemma found 891 numbered equations in 764 pages.")
+        let items = (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []).reduce(into: [String: String]()) { $0[$1.name] = $1.value }
+        XCTAssertEqual(url.host, "github.com")
+        XCTAssertEqual(url.path, "/\(LemmaLinks.repository)/issues/new")
+        XCTAssertEqual(items["template"], "book_report.yml")
+        XCTAssertEqual(items["title"], "Book report: The Elements of Statistical Learning")
+        XCTAssertEqual(items["book"], "The Elements of Statistical Learning")
+        XCTAssertEqual(items["right"], "Lemma found 891 numbered equations in 764 pages.")
+        XCTAssertFalse((items["version"] ?? "").isEmpty)
+    }
 }
 
 /// Two small PDFs: a book with running heads, an equation, an exercise, citations, references and an index;

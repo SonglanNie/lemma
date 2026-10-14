@@ -181,6 +181,7 @@ extension StudyStore {
         add("Book: Index Pages for Search", "magnifyingglass.circle", when: book && !isLaunchingIndex) { [self] in startIndexing() }
         add("Book: Analyze Again", "arrow.triangle.2.circlepath", when: book && analysis?.isAnalyzing == false) { [self] in reanalyze() }
         add("Help: Assistants…", "link") { [self] in showBrowserSetup = true }
+        add("Help: Report How Lemma Read This Book…", "text.book.closed", when: book) { [self] in reportBook() }
         return items
     }
 

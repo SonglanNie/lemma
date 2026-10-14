@@ -2,6 +2,13 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.2.1 (October 2026)
+
+- **Help › Report How Lemma Read This Book…** (also in the command palette) opens GitHub's book report form with the book's title and what Lemma found in it (equations, figures, tables, statements, proofs, bibliography and index entries) already filled in: say what went wrong and submit it from your browser. Nothing is sent before you do.
+
+**Fixed.**
+- When macOS asked whether Lemma may read a library folder (in Documents, Desktop or Downloads), or a library folder sat on a disk that was waking up, Lemma stopped responding until it had an answer. Library folders are now followed in the background.
+
 ## 3.2.0 (October 2026)
 
 **Asking, redone.** Select a passage and press ⌘K: in the VS Code-style window, Ask now opens as an editor widget under the passage, in your theme's colours, the way VS Code's inline chat opens under a line. It shows the passage, your question and the kind of help, then everything sent with it, each item with its checkbox and the cited equations as thumbnails, and finally the assistant and how to send. In the Classic window the popover keeps its size: the passage and the context list are no longer squeezed out of sight.

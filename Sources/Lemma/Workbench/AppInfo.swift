@@ -41,6 +41,17 @@ enum LemmaLinks {
         return components.url ?? site
     }
 
+    /// GitHub's "Book report" form (`.github/ISSUE_TEMPLATE/book_report.yml`), its fields prefilled with the book and
+    /// what Lemma found in it; the reader says what went wrong. Nothing is sent until they submit it in the browser.
+    static func bookReport(book: String, found: String) -> URL {
+        var components = URLComponents(string: "https://github.com/\(repository)/issues/new")!
+        components.queryItems = [URLQueryItem(name: "template", value: "book_report.yml"),
+                                 URLQueryItem(name: "title", value: "Book report: \(book)"),
+                                 URLQueryItem(name: "book", value: book), URLQueryItem(name: "right", value: found),
+                                 URLQueryItem(name: "version", value: build.isEmpty ? version : "\(version) (\(build))")]
+        return components.url ?? site
+    }
+
     /// The About panel with credits for the code and assets Lemma bundles.
     @MainActor static func showAbout() {
         let credits = NSMutableAttributedString()
@@ -62,6 +73,29 @@ enum LemmaLinks {
             .credits: credits
         ])
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+extension StudyStore {
+    /// Help › Report How Lemma Read This Book…: the book report form for the book in front, with its title and what the
+    /// analysis found, so telling how Lemma did on a book takes a sentence.
+    func reportBook() {
+        guard let workspace else { return }
+        var found: [String] = []
+        if let model = analysis, let book = model.analysis {
+            func count(_ n: Int, _ one: String, _ many: String) { if n > 0 { found.append("\(n) \(n == 1 ? one : many)") } }
+            count(model.definitionCounts[.equation] ?? 0, "numbered equation", "numbered equations")
+            count(model.definitionCounts[.figure] ?? 0, "figure", "figures")
+            count(model.definitionCounts[.table] ?? 0, "table", "tables")
+            count(book.structure.statements.count, "statement (theorem, lemma…)", "statements (theorems, lemmas…)")
+            count(book.structure.statements.filter { book.structure.proof(of: $0.key) != nil }.count, "proof", "proofs")
+            count(book.bibliography.count, "bibliography entry", "bibliography entries")
+            count(book.index.count, "index entry", "index entries")
+        }
+        let pages = document.map { "\($0.pageCount) pages" }
+        let summary = found.isEmpty ? "Lemma has not finished reading this PDF\(pages.map { " (\($0))" } ?? "")."
+            : "Lemma found \(found.joined(separator: ", "))\(pages.map { " in \($0)" } ?? "")."
+        NSWorkspace.shared.open(LemmaLinks.bookReport(book: workspace.title, found: summary))
     }
 }
 
