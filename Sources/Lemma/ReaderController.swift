@@ -367,11 +367,25 @@ final class ReaderController {
         if let x = bookmark.positionX, let y = bookmark.positionY { view?.go(to: PDFDestination(page: page, at: CGPoint(x: x, y: y))) }
         else { view?.go(to: page) }
     }
+    /// Brings `target` to the top of the view and flashes it, at the reader's zoom. The view keeps its sideways position
+    /// when the item fits across it there; otherwise the item is centred across the view (or, wider than the view,
+    /// starts at its left edge). The item's region is estimated, so it is never pinned to the view's edge.
     func go(to target: ReferenceTarget) {
-        guard let page = view?.document?.page(at: target.pageIndex) else { return }
+        guard let view, let page = view.document?.page(at: target.pageIndex) else { return }
         let region = target.region.rect
         let top = min(region.maxY + 24, page.bounds(for: .cropBox).maxY)
-        view?.go(to: PDFDestination(page: page, at: CGPoint(x: region.minX, y: top)))
+        let clip = view.documentView?.enclosingScrollView?.contentView
+        let x = clip?.bounds.minX
+        view.go(to: PDFDestination(page: page, at: CGPoint(x: region.minX, y: top)))
+        if let clip, let x {
+            let item = clip.convert(view.convert(region, from: page), from: view)
+            let width = clip.bounds.width
+            var origin = CGPoint(x: x, y: clip.bounds.minY)
+            if item.width > width - 16 { origin.x = item.minX - 8 }
+            else if item.minX < x || item.maxX > x + width { origin.x = item.midX - width / 2 }
+            clip.scroll(to: clip.constrainBoundsRect(NSRect(origin: origin, size: clip.bounds.size)).origin)
+            clip.enclosingScrollView?.reflectScrolledClipView(clip)
+        }
         flash(region, onPage: target.pageIndex)
     }
     func flash(_ rect: CGRect, onPage pageIndex: Int) {
