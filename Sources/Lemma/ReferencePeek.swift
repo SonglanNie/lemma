@@ -39,6 +39,9 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Dragged away from its mention, the peek becomes a window of its own that stays open while the reader works on.
+    func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
+
     func popoverDidClose(_ notification: Notification) {
         if store?.referencePeek?.id == requestID { store?.referencePeek = nil }
     }
@@ -188,7 +191,7 @@ struct ReferencePeekPane: View {
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             PeekPDFSurface(document: document, target: target)
-                .frame(width: peekWidth, height: height(for: target))
+                .frame(width: peekWidth, height: height(for: target, in: document))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.25)))
                 .accessibilityLabel("Live preview of \(key.spokenTitle) on PDF page \(target.pageIndex + 1)")
@@ -218,10 +221,11 @@ struct ReferencePeekPane: View {
         }
     }
 
-    private func height(for target: ReferenceTarget) -> CGFloat {
-        let region = target.region.rect
-        let scale = PeekPDFView.scale(for: region, width: peekWidth)
-        return min(430, max(110, region.height * scale + 28))
+    /// Tall enough for the referenced item at the scale that fits its page's width (PeekPDFView).
+    private func height(for target: ReferenceTarget, in document: PDFDocument) -> CGFloat {
+        let pageWidth = document.page(at: target.pageIndex)?.bounds(for: .cropBox).width ?? 612
+        let scale = (peekWidth - 12) / max(pageWidth, 1)
+        return min(430, max(110, target.region.rect.height * scale + 28))
     }
 
     private func resolve() async {
@@ -262,27 +266,14 @@ final class PeekPDFView: PDFView {
     var target: ReferenceTarget? { didSet { applied = false; needsLayout = true } }
     private var applied = false
 
-    static func scale(for region: CGRect, width: CGFloat) -> CGFloat {
-        max(0.6, min(2.6, (width - 24) / max(region.width + 12, 40)))
-    }
-
+    /// The page's width fills the preview, as in the reader, with the referenced item at the top.
     override func layout() {
         super.layout()
         guard !applied, let target, bounds.width > 20, let page = document?.page(at: target.pageIndex) else { return }
         applied = true
-        let region = target.region.rect
-        scaleFactor = Self.scale(for: region, width: bounds.width)
+        scaleFactor = scaleFactorForSizeToFit
         layoutDocumentView()
-        let top = min(region.maxY + 8, page.bounds(for: .cropBox).maxY)
-        go(to: PDFDestination(page: page, at: CGPoint(x: region.minX - 6, y: top)))
-        // PDFView scrolls destinations vertically only; bring the region's columns into view as well.
-        if let documentView {
-            let visible = documentView.convert(convert(region.insetBy(dx: -6, dy: 0), from: page), from: self)
-            documentView.scrollToVisible(CGRect(x: visible.minX, y: visible.midY, width: visible.width, height: 1))
-        }
-        if let label = page.selection(for: target.anchor.rect.insetBy(dx: -1, dy: -1)), !(label.string ?? "").isEmpty {
-            label.color = NSColor.controlAccentColor.withAlphaComponent(0.35)
-            highlightedSelections = [label]
-        }
+        let region = target.region.rect
+        go(to: PDFDestination(page: page, at: CGPoint(x: region.minX, y: min(region.maxY + 8, page.bounds(for: .cropBox).maxY))))
     }
 }

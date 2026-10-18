@@ -246,13 +246,8 @@ final class SecondaryPDFView: PDFView {
         } else if let target = state.target {
             let region = target.region.rect
             go(to: PDFDestination(page: page, at: CGPoint(x: region.minX, y: min(region.maxY + 40, page.bounds(for: .cropBox).maxY))))
-            if let label = page.selection(for: target.anchor.rect.insetBy(dx: -1, dy: -1)), !(label.string ?? "").isEmpty {
-                label.color = NSColor.controlAccentColor.withAlphaComponent(0.35)
-                highlightedSelections = [label]
-            }
         } else {
             go(to: page)
-            highlightedSelections = nil
         }
         isShowingPage = true
     }
