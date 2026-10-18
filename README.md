@@ -11,6 +11,20 @@ A free, open-source PDF reader for the Mac that understands textbooks and papers
 
 Open any mathematics, statistics or computer science PDF. Lemma reads it once, on your Mac, and the page becomes navigable: “Theorem 2.3”, “(3.44)”, “Figure 5”, “[12]” and index entries turn into links you can preview, peek at and follow without losing your place.
 
+## About this fork
+
+This is a modified version of [Lemma](https://github.com/fus3r/lemma) by its contributors, based on Lemma 3.2.1. It was changed by Songlan Nie, starting on 18 October 2026, and remains free software under the GNU GPL v3. The commit history records every change. In brief:
+
+- **Gap between pages.** Pages are 8 pt apart by default, and **Settings › Reading › Gap between pages** sets the gap from 0 to 32 pt. Open books follow at once, including the side view and reference previews.
+- **Right panel.** The notebook panel has a close button, in both the classic and the VS Code-style workbench.
+- **Reference previews.** The floating preview can be dragged off its line. It opens at the page's width and no longer selects the referenced text, which looked wrong when the PDF's text layer was misaligned.
+- **Go to.** Following a reference keeps your zoom and horizontal position, and scrolls sideways only when the item would be off screen. The box that flashes around an equation fits the equation and its label instead of reaching into the text around it, and a reference to an equation with lettered parts, such as (15) for (15a)–(15c), goes to all of them.
+- **Reference counts.** A citation written directly after a word, such as "and(24a)" in some PDFs' text, is now counted. Citations after a function name, such as "f(2)", still are not.
+- **Find.** ⌘F puts the cursor in the find field even when the page-number field had it, and pressing Return in the page-number field gives the keyboard back to the page.
+- **Updates.** This fork's build has no Sparkle update feed, so it never installs an upstream release over itself. **Lemma › Check for Updates…** only reports a newer upstream release.
+
+Build it as described under [Build it yourself](#build-it-yourself), cloning this repository instead. A build with only the Command Line Tools (no Xcode) works with `swift build -c release --disable-keychain && scripts/build-app.sh`. The download links below go to upstream releases, which do not include these changes.
+
 ## What Lemma does
 
 **References you never have to hunt for.** Hover a reference to preview it, click to peek at it beside the line you are reading, ⌘-click a term to look up its definition. Back (⌥⌘←) returns you to where you were. Citations open their entry in the bibliography and can find the paper online when you ask.

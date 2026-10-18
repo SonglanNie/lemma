@@ -39,11 +39,9 @@ info = {
     # 2.4: rows dragged inside the Library tree (between libraries, folders and sections).
     "UTExportedTypeDeclarations": [{"UTTypeIdentifier": "com.lemma.library-items", "UTTypeDescription": "Lemma Library items",
                                     "UTTypeConformsTo": ["public.data"], "UTTypeTagSpecification": {}}],
-    # 3.1: updates through Sparkle. Each GitHub release publishes the appcast beside its disk image; both are signed with
-    # the project's EdDSA key, and Sparkle asks the reader at the second launch before checking on its own (once a day).
-    "SUFeedURL": "https://github.com/fus3r/lemma/releases/latest/download/appcast.xml",
-    "SUPublicEDKey": "KoHep0rUqTengXG//fx6NTQl+51MkljJWgSssFbCNLc=",
-    "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True, "SUScheduledCheckInterval": 86400,
+    # This fork publishes no Sparkle feed: without SUFeedURL, Sparkle stays off (Updates.isEnabled), so upstream releases,
+    # which carry upstream's valid signature, cannot install over this build. Check for Updates… then only reports a newer
+    # upstream release (UpdateChecker), as a reminder to merge it.
     # Two free books of the catalog are served over plain HTTP by their authors (their HTTPS certificates are self-signed).
     "NSAppTransportSecurity": {"NSExceptionDomains": {
         "incompleteideas.net": {"NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": True},
