@@ -2,6 +2,11 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## Unreleased
+
+**Fixed.**
+- After Lemma was quit and opened again (for example by opening a PDF with it), the Dock could show a second Lemma icon among its recent apps. Found and fixed first by Songlan Nie in a fork of Lemma.
+
 ## 3.2.1 (October 2026)
 
 - **Help › Report How Lemma Read This Book…** (also in the command palette) opens GitHub's book report form with the book's title and what Lemma found in it (equations, figures, tables, statements, proofs, bibliography and index entries) already filled in: say what went wrong and submit it from your browser. Nothing is sent before you do.
