@@ -38,7 +38,7 @@ public struct CitationRecord: Codable, Equatable, Sendable {
 /// defined and cited, the back-of-book index and the reference list. Stored per document beside its search index.
 public struct BookAnalysis: Codable, Sendable {
     /// Bump when the analysis changes, so books are read again.
-    public static let currentVersion = 6
+    public static let currentVersion = 7
     public var version = BookAnalysis.currentVersion
     public var pageCount: Int
     public var numbering: PageNumbering?

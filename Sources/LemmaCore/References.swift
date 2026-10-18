@@ -86,10 +86,13 @@ public enum ReferenceScanner {
     /// Dotted equation labels, including appendix labels such as “(A.1)”.
     private static let dottedNumber = "(?:[1-9]\\d?|[A-Z])(?:\\.\\d{1,3}){1,3}[a-z]?"
 
-    private static let equation = try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}\\)\\]_^])\\((\(dottedNumber))\\)")
+    private static let equation = try! NSRegularExpression(pattern: "(?<![\\p{N}\\)\\]_^])\\((\(dottedNumber))\\)")
     /// Undotted labels such as “(12)”: papers number their equations this way, but so do lists and enumerations.
     /// They are references only in a document known to define such an equation.
-    private static let plainEquation = try! NSRegularExpression(pattern: "(?<![\\p{L}\\p{N}\\)\\]_^])\\(([1-9]\\d{0,2}[a-z]?)\\)")
+    private static let plainEquation = try! NSRegularExpression(pattern: "(?<![\\p{N}\\)\\]_^])\\(([1-9]\\d{0,2}[a-z]?)\\)")
+    /// Letters right before a parenthesis: a function's name (“f(1)”, “sin(2)”) unless they run to four or more, prose
+    /// whose space the text layer lost (“substituting(25)into(24a)”).
+    private static let functionName = try! NSRegularExpression(pattern: "(?<!\\p{L})\\p{L}{1,3}\\z")
     private static let prefixedEquation = try! NSRegularExpression(pattern: "\\b(?:[Ee]qs?\\.|[Ee]quations?|EQUATIONS?)\\s*\\(([1-9]\\d{0,2}[a-z]?)\\)")
     private static let separator = try! NSRegularExpression(pattern: "(?:\\s*,\\s*(?:and\\s+|&\\s*)?|\\s+and\\s+|\\s*&\\s*|\\s*[–\u{2014}-]\\s*|\\s+to\\s+)")
     private static let listedNumber = try! NSRegularExpression(pattern: "(\(number))(?![\\p{N}])")
@@ -125,12 +128,16 @@ public enum ReferenceScanner {
             guard location <= string.length else { return nil }
             return expression.firstMatch(in: text, options: [.anchored], range: NSRange(location: location, length: string.length - location))
         }
-        for match in equation.matches(in: text, range: whole) {
+        func appliesFunction(_ match: NSTextCheckingResult) -> Bool {
+            let start = max(0, match.range.location - 4)
+            return functionName.firstMatch(in: text, range: NSRange(location: start, length: match.range.location - start)) != nil
+        }
+        for match in equation.matches(in: text, range: whole) where !appliesFunction(match) {
             let label = string.substring(with: match.range(at: 1))
             found.append(ReferenceMention(key: ReferenceKey(kind: .equation, number: label), range: match.range, text: string.substring(with: match.range)))
         }
         if !plainEquations.isEmpty {
-            for match in plainEquation.matches(in: text, range: whole) {
+            for match in plainEquation.matches(in: text, range: whole) where !appliesFunction(match) {
                 let label = string.substring(with: match.range(at: 1))
                 guard plainEquations.contains(label) else { continue }
                 found.append(ReferenceMention(key: ReferenceKey(kind: .equation, number: label), range: match.range, text: string.substring(with: match.range)))
