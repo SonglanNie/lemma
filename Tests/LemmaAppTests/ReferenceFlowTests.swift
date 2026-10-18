@@ -177,7 +177,7 @@ final class ReferenceFlowTests: XCTestCase {
     }
 
     @MainActor
-    func testPeekViewScrollsToTheReferencedRegion() async throws {
+    func testPeekViewShowsThePageWidthAtTheReferencedRegion() async throws {
         let fixture = try Fixture()
         defer { fixture.close() }
         let index = try XCTUnwrap(fixture.store.references)
@@ -194,8 +194,8 @@ final class ReferenceFlowTests: XCTestCase {
         let page = try XCTUnwrap(fixture.store.document?.page(at: target.pageIndex))
         let label = peek.convert(target.anchor.rect, from: page)
         XCTAssertTrue(peek.bounds.insetBy(dx: -1, dy: -1).contains(label), "The label \(label) must be visible in the peek \(peek.bounds).")
-        XCTAssertEqual(peek.scaleFactor, PeekPDFView.scale(for: target.region.rect, width: 556), accuracy: 0.001)
-        XCTAssertEqual(peek.highlightedSelections?.first?.string?.contains("1.1"), true, "The defining label is highlighted.")
+        XCTAssertEqual(peek.scaleFactor, peek.scaleFactorForSizeToFit, accuracy: 0.001, "The page's width fills the peek, as in the reader.")
+        XCTAssertTrue(peek.highlightedSelections?.isEmpty ?? true, "Nothing is selected: a misaligned text layer would mark the wrong glyphs.")
     }
 
     @MainActor
