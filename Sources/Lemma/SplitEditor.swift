@@ -71,6 +71,7 @@ struct SecondaryPDFSurface: NSViewRepresentable {
     let state: SplitEditorState
     /// The page theme's revision: pages drawn in another theme are drawn again.
     var pageThemeRevision = 0
+    @AppStorage(LemmaPreferences.pageGap) private var pageGap = LemmaPreferences.pageGapDefault
 
     func makeCoordinator() -> Coordinator { Coordinator(store: store) }
 
@@ -80,7 +81,7 @@ struct SecondaryPDFSurface: NSViewRepresentable {
         view.registerForDraggedTypes(view.registeredDraggedTypes + [.string])
         view.displayMode = .singlePageContinuous
         view.displaysPageBreaks = true
-        view.pageBreakMargins = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        view.setPageGap(pageGap, side: 8)
         view.backgroundColor = Self.canvas
         view.autoScales = true
         view.document = document
@@ -96,6 +97,7 @@ struct SecondaryPDFSurface: NSViewRepresentable {
     }
 
     func updateNSView(_ view: SecondaryPDFView, context: Context) {
+        view.setPageGap(pageGap, side: 8)
         if view.document !== document { view.document = document; view.shownID = nil }
         let canvas = Self.canvas
         if view.backgroundColor != canvas { view.backgroundColor = canvas }

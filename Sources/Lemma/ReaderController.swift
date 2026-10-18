@@ -1190,6 +1190,19 @@ extension HighlightColor {
     }
 }
 
+extension PDFView {
+    /// `gap` points between consecutive pages, split above and below each page, and `side` points beside it. A change lays
+    /// the pages out again and keeps the reading position.
+    func setPageGap(_ gap: Double, side: CGFloat) {
+        let margins = NSEdgeInsets(top: gap / 2, left: side, bottom: gap / 2, right: side)
+        guard !NSEdgeInsetsEqual(pageBreakMargins, margins) else { return }
+        let destination = document == nil ? nil : currentDestination
+        pageBreakMargins = margins
+        layoutDocumentView()
+        if let destination { go(to: destination) }
+    }
+}
+
 struct PDFReaderSurface: NSViewRepresentable {
     let document: PDFDocument
     let reading: ReadingState
@@ -1203,6 +1216,7 @@ struct PDFReaderSurface: NSViewRepresentable {
     var recallMask: SourceAnchor?
     var foldedProofs: Set<String> = []
     var understood: Set<ReferenceKey> = []
+    @AppStorage(LemmaPreferences.pageGap) private var pageGap = LemmaPreferences.pageGapDefault
 
     func makeCoordinator() -> Coordinator { Coordinator(controller: controller) }
     func makeNSView(context: Context) -> RegionPDFView {
@@ -1214,7 +1228,7 @@ struct PDFReaderSurface: NSViewRepresentable {
         view.displayMode = .singlePage
         view.displayDirection = .vertical
         view.displaysPageBreaks = true
-        view.pageBreakMargins = NSEdgeInsets(top: 16, left: 12, bottom: 16, right: 12)
+        view.setPageGap(pageGap, side: 12)
         view.backgroundColor = PageThemeState.shared.theme.isDark ? NSColor(white: 0.085, alpha: 1) : (ThemeSnapshot.shared.colors?.pageCanvas.nsColor ?? .windowBackgroundColor)
         view.minScaleFactor = 0.25; view.maxScaleFactor = 6
         view.autoScales = true
@@ -1222,6 +1236,7 @@ struct PDFReaderSurface: NSViewRepresentable {
         return view
     }
     func updateNSView(_ view: RegionPDFView, context: Context) {
+        view.setPageGap(pageGap, side: 12)
         let mode: PDFDisplayMode = switch reading.layout ?? .standard { case .singlePage: .singlePage; case .continuous: .singlePageContinuous; case .twoPages: .twoUp }
         if view.displayMode != mode { view.displayMode = mode }
         if view.document !== document {
