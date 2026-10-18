@@ -30,6 +30,8 @@ struct StudyPane: View {
                     Divider()
                     Button("Export study notes…", action: store.exportNotes)
                 } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 22).accessibilityLabel("Notebook actions")
+                Button(action: store.toggleStudy) { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                    .help("Hide notebook · ⌥⌘I").accessibilityLabel("Hide notebook")
             }.padding(.horizontal, 12).frame(height: 46)
             Divider()
             } else {
@@ -43,6 +45,7 @@ struct StudyPane: View {
                     NoteKind.allCases.map { kind in .action("New \(kind.label.lowercased())", enabled: store.reader.hasSelection) { store.addNote(kind: kind) } }
                         + [.separator, .action("Export Study Notes…") { store.exportNotes() }, .action("Hide Secondary Side Bar", shortcut: "⌥⌘B") { store.toggleStudy() }]
                 }
+                VSIconButton(icon: "close", help: "Hide Secondary Side Bar (⌥⌘B)") { store.toggleStudy() }
             }
             .padding(.leading, 8).padding(.trailing, 6)
             .frame(height: VSMetrics.viewTitleHeight)
