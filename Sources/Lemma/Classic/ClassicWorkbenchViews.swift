@@ -263,6 +263,9 @@ struct ClassicBreadcrumbBar: View {
                 .onSubmit {
                     if let index = store.pageIndex(forTyped: pageInput) { store.reader.goToPage(index + 1) }
                     pageInput = store.printedLabel(for: store.reader.pageNumber - 1) ?? String(store.reader.pageNumber); pageFocused = false
+                    // The keyboard goes back to the page just reached: clearing the focus binding leaves AppKit's field
+                    // editor in place, and ⌘F or the arrow keys would still act on the field.
+                    if let view = store.reader.view { view.window?.makeFirstResponder(view) }
                 }
                 .accessibilityLabel("Page").help(store.printedLabel(for: 0) != nil || store.analysis?.numbering?.differsFromPhysical == true ? "Printed page number; type “pdf 31” for a PDF page" : "PDF page")
             Text(pageSuffix).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary).fixedSize()
