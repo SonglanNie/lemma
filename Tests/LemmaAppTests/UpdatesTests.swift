@@ -36,5 +36,9 @@ final class UpdatesTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isNewer("3.1.0", than: "3.1"))
         XCTAssertFalse(UpdateChecker.isNewer("3.0.0", than: "3.1.0"))
         XCTAssertTrue(UpdateChecker.isNewer("4.0.0-beta.1", than: "3.9"))
+        XCTAssertTrue(UpdateChecker.isNewer("3.2.1-fork.2", than: "3.2.1-fork.1"))
+        XCTAssertTrue(UpdateChecker.isNewer("3.2.1-fork.1", than: "3.2.1"))
+        XCTAssertTrue(UpdateChecker.isNewer("3.2.2", than: "3.2.1-fork.3"))
+        XCTAssertFalse(UpdateChecker.isNewer("3.2.1-fork.1", than: "3.2.1-fork.1"))
     }
 }

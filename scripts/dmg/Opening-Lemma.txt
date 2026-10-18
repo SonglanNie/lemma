@@ -13,4 +13,4 @@ Or, in Terminal:
 
     xattr -dr com.apple.quarantine /Applications/Lemma.app
 
-You can check the source and build Lemma yourself: https://github.com/fus3r/lemma
+You can check the source and build Lemma yourself: https://github.com/SonglanNie/lemma

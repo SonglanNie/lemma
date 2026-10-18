@@ -25,7 +25,7 @@ shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.2.1",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.2.1-fork.1",
     "CFBundleVersion": "41", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
@@ -41,7 +41,7 @@ info = {
                                     "UTTypeConformsTo": ["public.data"], "UTTypeTagSpecification": {}}],
     # This fork publishes no Sparkle feed: without SUFeedURL, Sparkle stays off (Updates.isEnabled), so upstream releases,
     # which carry upstream's valid signature, cannot install over this build. Check for Updates… then only reports a newer
-    # upstream release (UpdateChecker), as a reminder to merge it.
+    # release of this fork (UpdateChecker) and opens its page.
     # Two free books of the catalog are served over plain HTTP by their authors (their HTTPS certificates are self-signed).
     "NSAppTransportSecurity": {"NSExceptionDomains": {
         "incompleteideas.net": {"NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": True},
