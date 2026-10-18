@@ -22,12 +22,18 @@ arch_flags=()
 swift build -c release $arch_flags
 bin_dir="$(swift build -c release $arch_flags --show-bin-path)"
 bundle_path="$PWD/build/Lemma.app"
-mkdir -p "$bundle_path/Contents/MacOS" "$bundle_path/Contents/Resources/Chrome Companion"
-# Replace executables by rename, so a running Lemma or browser host keeps its own copy.
-for name in Lemma LemmaBrowserHost LemmaIndexer; do
+# LemmaIndexer gets a background-only bundle of its own (Info.plist from package-app.py): PDFKit registers it with the
+# window server, and from Contents/MacOS it would register as Lemma and get a second Lemma icon in the Dock.
+helper_path="$bundle_path/Contents/Helpers/LemmaIndexer.app"
+mkdir -p "$bundle_path/Contents/MacOS" "$bundle_path/Contents/Resources/Chrome Companion" "$helper_path/Contents/MacOS"
+# Replace executables by rename, so a running Lemma, browser host or indexer keeps its own copy.
+for name in Lemma LemmaBrowserHost; do
   cp "$bin_dir/$name" "$bundle_path/Contents/MacOS/.$name.new"
   mv -f "$bundle_path/Contents/MacOS/.$name.new" "$bundle_path/Contents/MacOS/$name"
 done
+cp "$bin_dir/LemmaIndexer" "$helper_path/Contents/MacOS/.LemmaIndexer.new"
+mv -f "$helper_path/Contents/MacOS/.LemmaIndexer.new" "$helper_path/Contents/MacOS/LemmaIndexer"
+rm -f "$bundle_path/Contents/MacOS/LemmaIndexer"
 # Sparkle (in-app updates) in Contents/Frameworks, without the XPC services only a sandboxed app needs.
 framework="$bundle_path/Contents/Frameworks/Sparkle.framework"
 rm -rf "$framework"; mkdir -p "$bundle_path/Contents/Frameworks"
@@ -43,8 +49,8 @@ if [[ $identity == "Developer ID Application:"* ]]; then
   for code in "$framework/Versions/B/Autoupdate" "$framework/Versions/B/Updater.app" "$framework"; do
     codesign --force --options runtime --timestamp --sign "$identity" "$code"
   done
-  for name in LemmaIndexer LemmaBrowserHost; do
-    codesign --force --options runtime --timestamp --entitlements scripts/Lemma.entitlements --sign "$identity" "$bundle_path/Contents/MacOS/$name"
+  for code in "$helper_path" "$bundle_path/Contents/MacOS/LemmaBrowserHost"; do
+    codesign --force --options runtime --timestamp --entitlements scripts/Lemma.entitlements --sign "$identity" "$code"
   done
   codesign --force --options runtime --timestamp --entitlements scripts/Lemma.entitlements --sign "$identity" "$bundle_path"
 else
