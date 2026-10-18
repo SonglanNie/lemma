@@ -505,11 +505,34 @@ public enum PageReferenceAnalyzer {
         return true
     }
 
-    /// A destination from a PDF link or an outline entry. Uses the text definition on that page when one matches.
+    /// The item numbered `number` defined within 40 pt of `point` vertically: a link's destination sits at its item or
+    /// just above it. A number without a letter also names its lettered equations (“(15)” for 15a and 15b), which give
+    /// their regions together, anchored at the first.
+    static func definition(numbered number: String, at point: CGPoint?, in defined: [ReferenceTarget]) -> ReferenceTarget? {
+        guard let point else { return nil }
+        func distance(_ target: ReferenceTarget) -> CGFloat {
+            let region = target.region.rect
+            return point.y > region.maxY ? point.y - region.maxY : point.y < region.minY ? region.minY - point.y : 0
+        }
+        let near = defined.filter { distance($0) <= 40 }
+        if let exact = near.filter({ $0.key.number == number }).min(by: { distance($0) < distance($1) }) { return exact }
+        let parts = near.filter {
+            $0.key.kind == .equation && $0.key.number.count > number.count && $0.key.number.hasPrefix(number)
+                && $0.key.number.dropFirst(number.count).allSatisfy(\.isLetter)
+        }
+        guard var whole = parts.max(by: { $0.anchor.rect.maxY < $1.anchor.rect.maxY }) else { return nil }
+        whole.region = PageRegion(parts.reduce(whole.region.rect) { $0.union($1.region.rect) })
+        return whole
+    }
+
+    /// A destination from a PDF link or an outline entry. Uses the text definition on that page when one matches: the
+    /// same key, or for a link read only as its number (hyperref links “4a” inside “(4a)”) the item with that number
+    /// defined where the link points.
     public static func target(for destination: LinkDestination, key: ReferenceKey, in document: PDFDocument, origin: ReferenceTarget.Origin) -> ReferenceTarget? {
         guard let page = document.page(at: destination.pageIndex) else { return nil }
-        if let defined = definitions(on: page, pageIndex: destination.pageIndex).first(where: { $0.key == key }) {
-            var target = defined; target.origin = origin; return target
+        let defined = definitions(on: page, pageIndex: destination.pageIndex)
+        if let match = defined.first(where: { $0.key == key }) ?? (key.kind == .link ? definition(numbered: key.number, at: destination.point, in: defined) : nil) {
+            var target = match; target.origin = origin; return target
         }
         let box = page.bounds(for: .cropBox)
         let point = destination.point ?? CGPoint(x: box.minX, y: box.maxY)
@@ -541,7 +564,7 @@ extension ReferenceLayout {
 
 /// Persisted reference scanning, so a book is analysed once. Bump `currentVersion` when heuristics change.
 public struct ReferenceCache: Codable, Sendable {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
     public var version = ReferenceCache.currentVersion
     public var scannedPages: Set<Int> = []
     public var targets: [ReferenceTarget] = []

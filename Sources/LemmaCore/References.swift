@@ -383,11 +383,27 @@ public enum ReferenceLayout {
     static func endsDisplay(_ row: Row, column: ClosedRange<CGFloat>) -> Bool {
         if isBodyText(row, column: column) { return true }
         if row.minX <= column.lowerBound + 20, isProse(row.text) { return true }
+        // Displays are inset. A line at the column's left edge is text, even with mathematics in it, when it opens with a
+        // word (“If τ = [τ₀ˡ] then”, “Index-based notation”) or holds a run of seven letters: prose whose word spaces
+        // the text layer lost (“βⱼ ∈ ℝˢ, (j = 1, …, k), thefollowingholds:”), which a formula does not contain.
+        if let first = row.fragments.min(by: { $0.bounds.minX < $1.bounds.minX }), opensText(first, text: row.text, column: column) { return true }
         let width = column.upperBound - column.lowerBound
         guard row.minX <= column.lowerBound + 2, row.maxX >= column.upperBound - 0.06 * width else { return false }
         return longWord.firstMatch(in: row.text, range: NSRange(location: 0, length: (row.text as NSString).length)) != nil
     }
     private static let longWord = try! NSRegularExpression(pattern: "(?<!\\p{L})\\p{Latin}{4,}(?!\\p{L})")
+    /// Whether a line starting with `fragment` (the line's `text`) is text by its start at the column's left edge.
+    private static func opensText(_ fragment: LayoutFragment, text: String, column: ClosedRange<CGFloat>) -> Bool {
+        guard fragment.bounds.minX <= column.lowerBound + 16 else { return false }
+        return leadingWord.firstMatch(in: fragment.text, range: NSRange(location: 0, length: (fragment.text as NSString).length)) != nil
+            || letterRun.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil
+    }
+    /// A fragment of text rather than of a formula: prose, or a line opening at the column's left edge as text.
+    static func isText(_ fragment: LayoutFragment, column: ClosedRange<CGFloat>) -> Bool {
+        isProse(fragment.text) || opensText(fragment, text: fragment.text, column: column)
+    }
+    private static let leadingWord = try! NSRegularExpression(pattern: "^\\s*\\p{Latin}{2,}(?=[\\s,.:;\\-])")
+    private static let letterRun = try! NSRegularExpression(pattern: "\\p{Latin}{7}")
 
     /// A displayed equation: the label's row and adjacent formula rows, bounded by body text or whitespace.
     public static func equationRegion(label: CGRect, fragments: [LayoutFragment], page: CGRect) -> CGRect {
@@ -396,10 +412,20 @@ public enum ReferenceLayout {
         guard let index = row(containing: label.midY, in: rows) else {
             return padded(CGRect(x: column.lowerBound, y: label.minY, width: column.upperBound - column.lowerBound, height: label.height), page: page)
         }
+        // A text line whose glyph boxes run tall (accents, a fraction beside it) can share the label's row. Text never
+        // belongs to a display: its fragments are left out of the label's line and bound the display on their side.
+        let prose = rows[index].fragments.filter { isText($0, column: column) }
+        let formula = rows[index].fragments.filter { !isText($0, column: column) }
+        func minY(_ i: Int) -> CGFloat { i == index ? formula.map(\.bounds.minY).min() ?? label.minY : rows[i].minY }
+        func maxY(_ i: Int) -> CGFloat { i == index ? formula.map(\.bounds.maxY).max() ?? label.maxY : rows[i].maxY }
         var top = index, bottom = index
-        while top > 0, !endsDisplay(rows[top - 1], column: column), rows[top - 1].minY - rows[top].maxY <= 16 { top -= 1 }
-        while bottom + 1 < rows.count, !endsDisplay(rows[bottom + 1], column: column), rows[bottom].minY - rows[bottom + 1].maxY <= 16 { bottom += 1 }
-        let minY = min(rows[bottom].minY, label.minY), maxY = max(rows[top].maxY, label.maxY)
+        if !prose.contains(where: { $0.bounds.midY > label.midY }) {
+            while top > 0, !endsDisplay(rows[top - 1], column: column), rows[top - 1].minY - maxY(top) <= 16 { top -= 1 }
+        }
+        if !prose.contains(where: { $0.bounds.midY <= label.midY }) {
+            while bottom + 1 < rows.count, !endsDisplay(rows[bottom + 1], column: column), minY(bottom) - rows[bottom + 1].maxY <= 16 { bottom += 1 }
+        }
+        let minY = min(minY(bottom), label.minY), maxY = max(maxY(top), label.maxY)
         // Ragged prose can end before a flush-right label; the label always belongs to its display.
         let minX = min(column.lowerBound, label.minX), maxX = max(column.upperBound, label.maxX)
         return padded(CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY), page: page)
