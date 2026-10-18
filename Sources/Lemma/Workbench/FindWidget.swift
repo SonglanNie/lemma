@@ -166,7 +166,8 @@ struct FindWidget: View {
         .shadow(color: theme[.widgetShadow], radius: 8, y: 2)
         .onKeyPress(.escape) { find.hide(); return .handled }
         .onChange(of: find.query) { _, _ in find.queryChanged() }
-        .onChange(of: find.focusRequest, initial: true) { _, _ in focused = true }
+        // On the first ⌘F the field is not in the window yet when this runs: ask for the keyboard once it is.
+        .onChange(of: find.focusRequest, initial: true) { _, _ in DispatchQueue.main.async { focused = true } }
         // PDFKit reports matches one by one: highlight the first ones at once, then every few hundred, and all at the end.
         .onChange(of: reader.searchResults.count) { _, count in if count <= 40 || count % 250 == 0 { refreshHighlights() } }
         .onChange(of: reader.isSearching) { _, searching in
