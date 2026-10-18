@@ -13,16 +13,15 @@ struct LemmaApp: App {
                 .frame(minWidth: 960, minHeight: 640)
                 .tint(.lemmaOlive)
                 .onAppear {
-                    NSApp.setActivationPolicy(.regular)
+                    // `swift run` starts a bare executable, which macOS keeps out of the Dock. The packaged app is a Dock app
+                    // already, with its icon from Info.plist; setting the policy or icon again there makes the Dock list
+                    // Lemma twice.
+                    if Bundle.main.bundleURL.pathExtension != "app" { NSApp.setActivationPolicy(.regular) }
                     if QAHooks.startsInBackground {
                         // A QA copy started in the background stays behind the reader's windows and never takes the keyboard.
                         DispatchQueue.main.async { for window in NSApp.windows where window.styleMask.contains(.titled) { window.orderBack(nil) } }
                     } else {
                         NSApp.activate(ignoringOtherApps: true)
-                    }
-                    if let iconURL = Bundle.main.url(forResource: "Lemma", withExtension: "icns"),
-                       let icon = NSImage(contentsOf: iconURL) {
-                        NSApp.applicationIconImage = icon
                     }
                     store.restore(); QAHooks.installIfRequested(store: store); store.libraries.start()
                     // The first launch opens the tour, whose colour page offers the reader's VS Code theme; the offer waits for it.
