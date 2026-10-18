@@ -16,8 +16,12 @@ enum LemmaPreferences {
     static let contextPins = "context.pins"
     static let pageTheme = "pageTheme"
     static let lineNumbers = "lineNumbers"
+    static let pageGap = "pageGap"
 
     static func flag(_ key: String) -> Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+
+    /// Points between consecutive pages in every PDF view (PDFView.setPageGap).
+    static let pageGapDefault = 8.0
 
     /// Quick questions send at once unless the reader chose Review (ChatGPT Web only): one default for Settings,
     /// the settings editor and the quick-question popover.
@@ -38,6 +42,7 @@ struct SettingsView: View {
     @AppStorage(LemmaPreferences.contextPins) private var includePins = true
     @AppStorage(LemmaPreferences.pageTheme) private var pageTheme = PageTheme.paper.rawValue
     @AppStorage(LemmaPreferences.lineNumbers) private var lineNumbers = true
+    @AppStorage(LemmaPreferences.pageGap) private var pageGap = LemmaPreferences.pageGapDefault
 
     var body: some View {
         TabView {
@@ -68,6 +73,14 @@ struct SettingsView: View {
                         store?.reader.showLineNumbers = value
                     }))
                     Text("Click a number to select its line; type “64:12” in Go to. Bars beside a line mark your highlights, notes, “?” marks and drawings. ⌃⌘L.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    LabeledContent("Gap between pages") {
+                        HStack {
+                            Slider(value: $pageGap, in: 0...32, step: 1).frame(width: 180)
+                            Text("\(Int(pageGap)) pt").monospacedDigit().frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                    Text("Space between pages in the reader, the side view and reference previews; open books follow at once. 0 runs the pages together.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } header: { Text("Page") }
             }.formStyle(.grouped).tabItem { Label("Reading", systemImage: "book") }

@@ -237,12 +237,13 @@ struct ReferencePeekPane: View {
 struct PeekPDFSurface: NSViewRepresentable {
     let document: PDFDocument
     let target: ReferenceTarget
+    @AppStorage(LemmaPreferences.pageGap) private var pageGap = LemmaPreferences.pageGapDefault
 
     func makeNSView(context: Context) -> PeekPDFView {
         let view = PeekPDFView()
         view.displayMode = .singlePageContinuous
         view.displaysPageBreaks = true
-        view.pageBreakMargins = NSEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
+        view.setPageGap(pageGap, side: 6)
         view.backgroundColor = .windowBackgroundColor
         view.autoScales = false
         view.document = document
@@ -251,6 +252,7 @@ struct PeekPDFSurface: NSViewRepresentable {
     }
 
     func updateNSView(_ view: PeekPDFView, context: Context) {
+        view.setPageGap(pageGap, side: 6)
         if view.document !== document { view.document = document }
         if view.target != target { view.target = target }
     }
