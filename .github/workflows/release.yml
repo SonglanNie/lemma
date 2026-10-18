@@ -1,0 +1,38 @@
+name: Release
+# Pushing a tag v<version> (for example v3.2.1-fork.1) builds Lemma for Apple silicon and Intel, packs the disk image and
+# publishes it as a GitHub release. The tag's message becomes the release notes. The tag must match
+# CFBundleShortVersionString in scripts/package-app.py.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version
+        run: |
+          version=$(sed -n 's/.*"CFBundleShortVersionString": "\([^"]*\)".*/\1/p' scripts/package-app.py)
+          [[ "v$version" == "$GITHUB_REF_NAME" ]] || { echo "::error::Tag $GITHUB_REF_NAME does not match version $version in scripts/package-app.py"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Toolchain
+        run: swift --version && sw_vers
+      - name: Build
+        run: scripts/build-app.sh --universal
+      - name: Disk image
+        run: scripts/make-dmg.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dmg="build/Lemma-$VERSION.dmg"
+          # The checkout keeps the tag without its message: fetch the annotated tag itself.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          printf '\n---\nBuilt by [this workflow run](%s/%s/actions/runs/%s) from %s.\nSHA-256 of `%s`: `%s`\n' \
+            "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_SHA" "${dmg:t}" "$(shasum -a 256 "$dmg" | cut -d' ' -f1)" >> notes.md
+          gh release create "$GITHUB_REF_NAME" "$dmg" --title "Lemma $VERSION" --notes-file notes.md --verify-tag
+        shell: zsh {0}
