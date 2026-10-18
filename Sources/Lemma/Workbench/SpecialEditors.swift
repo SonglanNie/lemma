@@ -239,6 +239,9 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.2.2", "check", [
+            "The Dock keeps a single Lemma icon: reading a new book, or quitting and opening Lemma again, no longer adds another one among the recent apps. Thanks to Songlan Nie, who found and fixed it first."
+        ]),
         ("Lemma 3.2.1", "book", [
             "Help › Report How Lemma Read This Book… opens GitHub's book report form with the book and what Lemma found in it already filled in: say what went wrong and submit it from your browser.",
             "Lemma no longer stops responding while macOS asks whether it may read a library folder, or while a library folder's disk wakes up."

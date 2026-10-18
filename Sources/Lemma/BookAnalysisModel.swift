@@ -69,9 +69,7 @@ final class BookAnalysisModel {
 
     /// The packaged helper that reads books in its own process; nil when running from tests or `swift run`.
     nonisolated static var helperURL: URL? {
-        guard let url = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("LemmaIndexer"),
-              FileManager.default.isExecutableFile(atPath: url.path), Bundle.main.bundleURL.pathExtension == "app" else { return nil }
-        return url
+        Bundle.main.bundleURL.pathExtension == "app" ? PageIndexer.helperURL : nil
     }
 
     /// Starts reading the book unless a current analysis exists. The packaged app reads it in a helper process, so a

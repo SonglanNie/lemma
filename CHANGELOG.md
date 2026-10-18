@@ -2,10 +2,10 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
-## Unreleased
+## 3.2.2 (October 2026)
 
 **Fixed.**
-- After Lemma was quit and opened again (for example by opening a PDF with it), the Dock could show a second Lemma icon among its recent apps. Found and fixed first by Songlan Nie in a fork of Lemma.
+- The Dock showed another Lemma icon among its recent apps for each new or changed PDF Lemma read, and after Lemma was quit and opened again: the helper that reads books took on Lemma's identity. It now runs from a background-only bundle of its own. Found and fixed first by Songlan Nie in a fork of Lemma.
 
 ## 3.2.1 (October 2026)
 

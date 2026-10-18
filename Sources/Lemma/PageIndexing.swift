@@ -49,10 +49,15 @@ final class PageIndexer {
         }
     }
 
-    /// The helper beside Lemma's executable: in the app bundle, or beside a development build.
+    /// The helper. The app bundle keeps it in a background-only bundle of its own, Contents/Helpers/LemmaIndexer.app:
+    /// PDFKit registers the helper with the window server, and from Contents/MacOS it registered as Lemma, so the Dock
+    /// showed another Lemma for each book it read. A development build has it beside Lemma's executable.
     nonisolated static var helperURL: URL? {
-        guard let url = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("LemmaIndexer"),
-              FileManager.default.isExecutableFile(atPath: url.path) else { return nil }
+        let bundle = Bundle.main.bundleURL
+        let url = bundle.pathExtension == "app"
+            ? bundle.appendingPathComponent("Contents/Helpers/LemmaIndexer.app/Contents/MacOS/LemmaIndexer")
+            : Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("LemmaIndexer")
+        guard let url, FileManager.default.isExecutableFile(atPath: url.path) else { return nil }
         return url
     }
 

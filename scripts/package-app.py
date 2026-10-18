@@ -25,8 +25,8 @@ shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.2.1",
-    "CFBundleVersion": "41", "LSMinimumSystemVersion": "15.0",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.2.2",
+    "CFBundleVersion": "42", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",
@@ -52,3 +52,13 @@ info = {
 }
 with (bundle / "Contents/Info.plist").open("wb") as file:
     plistlib.dump(info, file)
+# 3.2.2: the helper that reads books has a bundle of its own (scripts/build-app.sh), background-only, so the Dock never
+# shows it. In Contents/MacOS it took Lemma's identity and showed up as another Lemma.
+helper = {
+    "CFBundleName": "LemmaIndexer", "CFBundleIdentifier": "com.lemma.app.indexer", "CFBundleExecutable": "LemmaIndexer",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": info["CFBundleShortVersionString"],
+    "CFBundleVersion": info["CFBundleVersion"], "LSMinimumSystemVersion": info["LSMinimumSystemVersion"],
+    "LSBackgroundOnly": True,
+}
+with (bundle / "Contents/Helpers/LemmaIndexer.app/Contents/Info.plist").open("wb") as file:
+    plistlib.dump(helper, file)
