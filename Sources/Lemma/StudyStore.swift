@@ -6,20 +6,51 @@ import Observation
 
 @MainActor @Observable
 final class StudyStore {
+    /// One window's workbench: its tabs, the book in front and everything shown about it, its panels and layout. What
+    /// the windows share (the library, projects, assistants, notebooks, the saved session) is the app's.
+    let app: AppModel
+    /// Names the window across launches (its SwiftUI scene value and its entry in the saved session).
+    let id: UUID
     let repository: WorkspaceRepository
     let mailbox: BrowserMailbox
     let questions: QuestionRuntime
     @ObservationIgnored let covers: LibraryCovers
     let libraries: DynamicLibraries
+    @ObservationIgnored let fingerprints: FingerprintCache
+    @ObservationIgnored let lab: LabRuntime
+    let downloads: PDFDownloads
+    @ObservationIgnored let libraryGlossary: LibraryGlossary
+    /// The app's books and projects, which every window lists and edits.
+    var library: [StudyWorkspace] {
+        get { app.library }
+        set { app.library = newValue }
+        _modify { yield &app.library }
+    }
+    var projects: [ResearchProject] {
+        get { app.projects }
+        set { app.projects = newValue }
+        _modify { yield &app.projects }
+    }
+    /// The window showing this workbench, so ⌘W closes a book there and a window elsewhere.
+    @ObservationIgnored weak var mainWindow: NSWindow?
+    /// Whether a window shows this workbench: the last window closed keeps its workbench for the next one.
+    @ObservationIgnored var hasWindow = false
+    /// A window was asked for and has not appeared yet: asking again could open a second window on this workbench.
+    @ObservationIgnored var windowRequested = false
+    /// Where this workbench's window opens: at a tab dropped outside every window, or where it was last time.
+    @ObservationIgnored var placement: WindowPlacement?
+    /// PDFs the system asked Lemma to open before the session was restored; opened right after it.
+    @ObservationIgnored var pendingFileOpens: [URL] = []
+    @ObservationIgnored private(set) var restored = false
+    /// This window's workbench as last saved: what it keeps while a book is open or Zen Mode is on.
+    @ObservationIgnored lazy var savedWindow = WindowSession(id: id)
     /// The Library tree's selection, keyboard cursor, names being typed and drag feedback.
     @ObservationIgnored let libraryTree = LibraryTreeState()
     var showLibrarySources = false
     var showAcknowledgements = false
     var reader = ReaderController()
-    var library: [StudyWorkspace] = []
     var workspace: StudyWorkspace?
-    /// Multi-book research and the durable editor session live alongside the per-PDF workspaces.
-    var projects: [ResearchProject] = []
+    /// The research project this window works in (the side bar's, Collect's).
     var selectedProjectID: UUID?
     var projectQuery = ""
     var showCustomization = false
@@ -27,35 +58,21 @@ final class StudyStore {
     var specialTabs: [SpecialEditor] = []
     /// The special editor in front of the book, if any.
     var activeSpecial: SpecialEditor?
-    /// Page miniatures beside the page, as an editor's minimap.
-    var showMinimap = UserDefaults.standard.object(forKey: "editor.minimap.enabled") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(showMinimap, forKey: "editor.minimap.enabled") }
-    }
     /// The toast under the pointer, which stays until the pointer leaves it.
     @ObservationIgnored var hoveredToast: UUID?
     /// Regions of pages drawn as images (the debugger's goal), kept while they are shown again and again.
     @ObservationIgnored let regionImages: NSCache<NSString, NSImage> = { let cache = NSCache<NSString, NSImage>(); cache.countLimit = 24; return cache }()
     /// Opens SwiftUI's Settings window (the Classic style's settings), set by the window that can open it.
     @ObservationIgnored var openSettingsScene: (() -> Void)?
-    /// The minimap's slider all the time, or only under the pointer as VS Code does by default.
-    var minimapSliderAlways = UserDefaults.standard.string(forKey: "editor.minimap.showSlider") == "always" {
-        didSet { UserDefaults.standard.set(minimapSliderAlways ? "always" : "mouseover", forKey: "editor.minimap.showSlider") }
-    }
     /// Toasts at the bottom right and the notification center, as an editor's notifications.
     var notifications: [LemmaNotification] = []
     var showNotificationCenter = false
     /// The proof being stepped through in Run and Debug.
     var debug: ProofDebugSession?
-    /// Which panes of the side bar views are open (“OUTLINE”, “TIMELINE”…).
-    var paneExpanded: [String: Bool] = (UserDefaults.standard.dictionary(forKey: "workbench.panes") as? [String: Bool]) ?? [:] {
-        didSet { UserDefaults.standard.set(paneExpanded, forKey: "workbench.panes") }
-    }
     /// The panel fills the editor area (VS Code's Maximize Panel Size).
     var panelMaximized = false
     /// What's New, as a sheet in the Classic style.
     var showReleaseNotes = false
-    /// Full-text search across the library (the VS Code style's Search view).
-    @ObservationIgnored lazy var librarySearch = LibraryTextSearch(cacheFolder: repository.root.appendingPathComponent("Indexes", isDirectory: true))
     /// Outline entries the reader opened; the path to the reading position opens by itself while `outlineFollows`.
     var outlineExpanded: Set<String> = []
     /// Lines the reader marked to stop at while debugging a proof (F9), in this book.
@@ -69,12 +86,6 @@ final class StudyStore {
     var sidePDFDropDestination: EditorDropDestination?
     var formulaRequest: FormulaRequest?
     var workbenchLayout = WorkbenchLayout()
-    @ObservationIgnored var workbench = WorkbenchSession()
-    @ObservationIgnored var hasSavedSession = false
-    @ObservationIgnored var sessionWritable = true
-    @ObservationIgnored var projectsWritable = true
-    @ObservationIgnored var projectsDirty = false
-    @ObservationIgnored var projectSaveTask: Task<Void, Never>?
     var document: PDFDocument?
     var selectedNoteID: UUID?
     var error: String?
@@ -113,8 +124,6 @@ final class StudyStore {
     var derivationFocus: (id: UUID, line: Int, token: UUID)?
     /// Bumped when the page theme changes, so views drawn over the page refresh.
     var pageThemeRevision = 0
-    /// Books, papers and cited works the reader asked to download.
-    let downloads = PDFDownloads()
     var catalogMode = CatalogMode.books
     var arxivQuery = ""
     var arxivSort = ArxivSort.relevance
@@ -130,12 +139,34 @@ final class StudyStore {
     var paperLookups: [Int: PaperLookupState] = [:]
     @ObservationIgnored private var windowFitted = false
 
-    /// A window restored larger than the screen, or partly off it, is brought back inside the visible frame once.
+    /// The window showing this workbench, as it appears (and again as SwiftUI updates it). A window that comes up as the
+    /// key window may have done so before it was known to be this workbench's.
+    func attach(_ window: NSWindow?) {
+        mainWindow = window
+        guard let window else { return }
+        fitWindowToScreen()
+        if window.isKeyWindow { app.windowDidBecomeKey(window) }
+    }
+
+    /// The window closed while the workbench stays (it was the last window): the next window opens where it was.
+    func windowClosed() {
+        if let frame = mainWindow?.frame { placement = WindowPlacement(topLeft: NSPoint(x: frame.minX, y: frame.maxY), size: frame.size) }
+        hasWindow = false; windowFitted = false
+    }
+
+    /// A window opens where it was last time, or at the tab dropped to open it; then, larger than the screen or partly
+    /// off it, it is brought back inside the visible frame, once.
     func fitWindowToScreen() {
-        guard !windowFitted, let window = mainWindow, let screen = window.screen ?? NSScreen.main else { return }
+        guard !windowFitted, let window = mainWindow else { return }
         windowFitted = true
-        let visible = screen.visibleFrame
         var frame = window.frame
+        if let placement {
+            if let size = placement.size { frame.origin.y += frame.height - size.height; frame.size = size }
+            if let topLeft = placement.topLeft { frame.origin = NSPoint(x: topLeft.x, y: topLeft.y - frame.height) }
+            self.placement = nil
+        }
+        guard let screen = NSScreen.screens.first(where: { $0.frame.intersects(frame) }) ?? window.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
         frame.size.width = min(frame.width, visible.width)
         frame.size.height = min(frame.height, visible.height)
         frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
@@ -148,10 +179,6 @@ final class StudyStore {
     /// The statement under the reading position, computed once per position (the breadcrumb and header both ask).
     @ObservationIgnored var readingStatementCache: (key: String, value: ReadingStatement?)?
     @ObservationIgnored var pageTextMaps: [String: PageTextMap] = [:]
-    /// Terms and index entries of the other books in the library, for Look Up across books.
-    @ObservationIgnored let libraryGlossary = LibraryGlossary()
-    /// Python notebooks: interpreters and one kernel per running notebook.
-    @ObservationIgnored let lab = LabRuntime()
     /// Set when opening a notebook hid the inspector to make room; closing the notebook shows it again.
     @ObservationIgnored var labHidInspector = false
     /// Reading time per page and day, while the reader window is in use.
@@ -161,8 +188,6 @@ final class StudyStore {
     @ObservationIgnored var documents: [String: PDFDocument] = [:]
     @ObservationIgnored var referenceIndexes: [String: ReferenceIndex] = [:]
     @ObservationIgnored var analyses: [String: BookAnalysisModel] = [:]
-    /// The reader window, so ⌘W closes a book there and a window elsewhere.
-    @ObservationIgnored weak var mainWindow: NSWindow?
     var navigatorSection: NavigatorSection = .contents
     var studySection: StudySection = .notes
     var libraryQuery = ""
@@ -206,16 +231,9 @@ final class StudyStore {
     @ObservationIgnored var questionPreset: QuestionPreset?
     /// Replaces opening Chrome, for tests and previews.
     @ObservationIgnored var urlOpener: ((URL) -> Void)?
-    /// PDFs the system asked Lemma to open before the last session was restored; opened right after it.
-    @ObservationIgnored var pendingFileOpens: [URL] = []
-    @ObservationIgnored private(set) var restored = false
-    /// Set once restore() has begun: reopening the window from the Dock runs the window's onAppear again.
-    @ObservationIgnored var restoreStarted = false
     private var previousPanels: (Bool, Bool, Bool)?
     @ObservationIgnored var accessedSources: [String: URL] = [:]
     private var lastResults: [UUID: String] = [:]
-    /// Fingerprints of PDFs already read, by file, so opening a known and unchanged file reads none of its bytes.
-    @ObservationIgnored let fingerprints: FingerprintCache
     /// A PDF whose fingerprint is being read off the main thread (large, remote or in the cloud), shown in the status bar.
     var openingFile: OpeningFile?
     /// Files up to this size are hashed at once when unknown; tests lower it to exercise the background path.
@@ -227,17 +245,7 @@ final class StudyStore {
     /// Saves finished on the writer's queue, collected for the main actor.
     @ObservationIgnored let saveOutcomes = SaveOutcomes()
     @ObservationIgnored var contentSavesInFlight = 0
-    /// The editor session as last written, so an unchanged session is not written again.
-    @ObservationIgnored var lastSessionData: Data?
-    /// workbench.json stays pretty-printed: it is small and people read it.
-    @ObservationIgnored let sessionEncoder: JSONEncoder = { let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]; return encoder }()
-    /// Saved books that could not be read at launch: their files are kept, and their tabs stay in the saved session.
-    @ObservationIgnored var unreadableWorkspaces: [WorkspaceLoadFailure] = []
     @ObservationIgnored var preservedTabIDs: [String] = []
-    /// Passwords of locked PDFs opened in this session, by fingerprint; never written anywhere.
-    @ObservationIgnored var passwords: [String: String] = [:]
-    /// Books opened with a password: the analysis helper cannot read them, so they are not sent to it.
-    @ObservationIgnored var lockedFingerprints: Set<String> = []
     /// Replaces the password dialog, for tests: the file's name and whether a password was just refused.
     @ObservationIgnored var passwordPrompt: ((String, Bool) -> String?)?
     /// Open tabs' documents, least recently shown first: only the book in front and a few others stay in memory.
@@ -248,47 +256,21 @@ final class StudyStore {
     @ObservationIgnored let assetImages: NSCache<NSString, NSImage> = { let cache = NSCache<NSString, NSImage>(); cache.countLimit = 64; return cache }()
     /// Counts derived from saved explanations (steps to check, code blocks), by note, while the text is unchanged.
     @ObservationIgnored var explanationSummaries: [UUID: ExplanationSummary] = [:]
-    @ObservationIgnored var terminating = false
 
-    init(root supportRoot: URL? = nil) {
-        let root = supportRoot ?? ProcessInfo.processInfo.environment["LEMMA_SUPPORT_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-            ?? WorkspaceRepository.defaultRoot
-        repository = WorkspaceRepository(root: root)
-        mailbox = BrowserMailbox(root: root)
-        questions = QuestionRuntime(root: root.appendingPathComponent("Assistants", isDirectory: true))
-        covers = LibraryCovers(root: root)
-        fingerprints = FingerprintCache(root: root)
-        let newLibrarySources = !FileManager.default.fileExists(atPath: root.appendingPathComponent("Libraries.json").path)
-        libraries = DynamicLibraries(root: root, defaults: LibraryCollection.publicDefaults(support: root))
-        do {
-            // Each workspace is decoded once (the library sources above read the same, now cached, files).
-            let listing = try repository.listing()
-            library = listing.workspaces
-            unreadableWorkspaces = listing.failures
-            if !listing.failures.isEmpty { self.error = Self.unreadableMessage(listing.failures) }
-        } catch {
-            // Without the library, saving the session would forget every open tab: keep the saved one as it is.
-            sessionWritable = false
-            self.error = "Could not read the study library: \(error.localizedDescription)"
-        }
-        do { projects = try ProjectRepository(root: root).load() }
-        catch { projectsWritable = false; self.error = "Could not read the projects. Their saved file has been kept: \(error.localizedDescription)" }
-        if FileManager.default.fileExists(atPath: sessionURL.path) {
-            do {
-                let data = try Data(contentsOf: sessionURL)
-                workbench = try JSONDecoder().decode(WorkbenchSession.self, from: data); hasSavedSession = true
-                lastSessionData = data
-            }
-            catch { sessionWritable = false; self.error = "Could not restore the editor session. Its saved file has been kept: \(error.localizedDescription)" }
-        }
-        // The earlier one-book list could be only one row tall. Make the new collection tree visible once,
-        // when its sources are first installed; subsequent user resizing remains fully persistent.
-        if newLibrarySources, libraries.collections.count > 1,
-           (workbench.layout.explorerHeights?[ExplorerPane.library.id] ?? 220) < 120 {
-            var heights = workbench.layout.explorerHeights ?? [:]
-            heights[ExplorerPane.library.id] = 220
-            workbench.layout.explorerHeights = heights
-        }
+    init(app: AppModel, id: UUID = UUID()) {
+        self.app = app
+        self.id = id
+        repository = app.repository
+        mailbox = app.mailbox
+        questions = app.questions
+        covers = app.covers
+        libraries = app.libraries
+        fingerprints = app.fingerprints
+        lab = app.lab
+        downloads = app.downloads
+        libraryGlossary = app.libraryGlossary
+        // A window opened once the session is restored has nothing to wait for.
+        restored = app.restored
         reader.onReadingChanged = { [weak self] page, scale in
             guard let self, self.workspace != nil else { return }
             let moved = self.workspace?.reading.pageIndex != page
@@ -322,9 +304,7 @@ final class StudyStore {
             guard let self, let workspace = self.workspace else { return nil }
             return self.lab.image(named: name, workspaceID: workspace.id, repository: self.repository)
         }
-        libraries.sourcesResolved = { [weak self] sources in self?.relinkSources(sources) }
-        // Library scans take the studied books from memory rather than decoding every workspace again.
-        libraries.workspaceReferences = { [weak self] in self?.library.map(LibraryWorkspaceRef.init) ?? [] }
+        app.register(self)
     }
 
     var currentNote: StudyNote? { workspace?.notes.first { $0.id == selectedNoteID } }
@@ -348,7 +328,7 @@ final class StudyStore {
     /// while the status bar says so (a long book, a network volume, a file in iCloud Drive). `then` runs once the book is
     /// in front (true) or could not be opened (false); a request replaced by a newer one runs neither.
     @discardableResult
-    func openFile(_ url: URL, toSide: Bool = false, quiet: Bool = false, then: ((Bool) -> Void)? = nil) -> OpenOutcome {
+    func openFile(_ url: URL, toSide: Bool = false, quiet: Bool = false, then: ((StudyStore?) -> Void)? = nil) -> OpenOutcome {
         flush()
         if let pending = openingFile { openingFile = nil; pending.cancel() }
         let scoped = url.startAccessingSecurityScopedResource()
@@ -405,10 +385,16 @@ final class StudyStore {
     /// Opens a PDF whose fingerprint is known: its workspace (or a new one), its document (shared with any other view of
     /// the same bytes), a password when it is locked.
     @discardableResult
-    private func finishOpen(_ url: URL, fingerprint: String, scoped: Bool, toSide: Bool, quiet: Bool, then: ((Bool) -> Void)?) -> OpenOutcome {
+    private func finishOpen(_ url: URL, fingerprint: String, scoped: Bool, toSide: Bool, quiet: Bool, then: ((StudyStore?) -> Void)?) -> OpenOutcome {
         do {
             // The workspace named by these bytes, or one that follows them since its PDF changed on disk.
             let id = library.first(where: { $0.id == fingerprint })?.id ?? library.first(where: { $0.fingerprint == fingerprint })?.id ?? fingerprint
+            // A book open in another window is shown there: a book is open in one window only.
+            if !toSide, let owner = app.owner(of: id), owner !== self {
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                app.show(owner)
+                return owner.activateBook(id, quiet: quiet, then: then)
+            }
             let pdf: PDFDocument
             if let cached = documents[id] ?? sideDocuments[id] {
                 // The same bytes are open already, perhaps from another path: one document, so its reference index,
@@ -422,10 +408,10 @@ final class StudyStore {
                     guard unlock(loaded, fingerprint: fingerprint, name: url.lastPathComponent) else {
                         if scoped { url.stopAccessingSecurityScopedResource() }
                         status = "“\(url.lastPathComponent)” needs its password to open."
-                        then?(false)
+                        then?(nil)
                         return .failed
                     }
-                    lockedFingerprints.insert(fingerprint)
+                    app.lockedFingerprints.insert(fingerprint)
                 }
                 guard loaded.pageCount > 0 else { throw CocoaError(.fileReadCorruptFile) }
                 pdf = loaded
@@ -493,16 +479,16 @@ final class StudyStore {
                     notify("This PDF changed on disk; your notes moved with it.", source: "Library")
                 }
             }
-            then?(true)
+            then?(self)
             return .opened
         } catch { return failOpen(url, error, scoped: scoped, quiet: quiet, then: then) }
     }
 
     @discardableResult
-    private func failOpen(_ url: URL, _ error: Error, scoped: Bool, quiet: Bool, then: ((Bool) -> Void)?) -> OpenOutcome {
+    private func failOpen(_ url: URL, _ error: Error, scoped: Bool, quiet: Bool, then: ((StudyStore?) -> Void)?) -> OpenOutcome {
         if scoped { url.stopAccessingSecurityScopedResource() }
         if !quiet { self.error = "Could not open this PDF: \(error.localizedDescription)" }
-        then?(false)
+        then?(nil)
         return .failed
     }
 
@@ -555,11 +541,11 @@ final class StudyStore {
     /// Unlocks a PDF protected by a password, asking for it with the system's secure field. The password stays in memory
     /// for this session only, so the book can be shown again without asking; it is never written anywhere.
     private func unlock(_ document: PDFDocument, fingerprint: String, name: String) -> Bool {
-        if let known = passwords[fingerprint], document.unlock(withPassword: known) { return true }
+        if let known = app.passwords[fingerprint], document.unlock(withPassword: known) { return true }
         var refused = false
         for _ in 0..<5 {
             guard let password = askPassword(for: name, refused: refused) else { return false }
-            if document.unlock(withPassword: password) { passwords[fingerprint] = password; return true }
+            if document.unlock(withPassword: password) { app.passwords[fingerprint] = password; return true }
             refused = true
         }
         return false
@@ -623,7 +609,7 @@ final class StudyStore {
         }
         references = index; reader.references = index; analysis = model
         refreshOutline()
-        if lockedFingerprints.contains(workspace.fingerprint) {
+        if app.lockedFingerprints.contains(workspace.fingerprint) {
             model.skip("This PDF is protected by a password, so Lemma does not read its structure: references, statements and the index are not linked. Reading, notes and search on the page work.")
         } else {
             model.start(url: URL(fileURLWithPath: workspace.sourcePath), outline: outline.items)
@@ -639,9 +625,10 @@ final class StudyStore {
         bringToFrontOfLibrary(workspace)
         // Written in the background: a reopened book usually changes only its reading position and the time it was opened.
         save(wait: false)
-        saveTabs()
-        UserDefaults.standard.set(workspace.id, forKey: "lastWorkspaceID")
+        saveWorkbench()
         tracker?.start()
+        // A book opened from the menus while every window is closed opens the window of this workbench.
+        app.requestWindow(self)
     }
 
     /// Leaves recall, drawing and region modes and the selection, assigning only what is set: each of these redraws the
@@ -668,8 +655,9 @@ final class StudyStore {
 
     /// Brings an open book to the front: from memory when its document is still loaded, by opening its file otherwise.
     @discardableResult
-    func activateBook(_ id: String, quiet: Bool = false, then: ((Bool) -> Void)? = nil) -> OpenOutcome {
-        guard workspace?.id != id else { activeSpecial = nil; then?(true); return .opened }
+    func activateBook(_ id: String, quiet: Bool = false, then: ((StudyStore?) -> Void)? = nil) -> OpenOutcome {
+        if let owner = app.owner(of: id), owner !== self { app.show(owner); return owner.activateBook(id, quiet: quiet, then: then) }
+        guard workspace?.id != id else { activeSpecial = nil; then?(self); return .opened }
         if let pdf = documents[id] {
             flush()
             // The saved workspace is decoded again only if its file changed since it was last read or saved.
@@ -677,12 +665,12 @@ final class StudyStore {
                 var workspace = saved
                 workspace.lastOpenedAt = .now
                 present(workspace, document: pdf, onDisk: saved)
-                then?(true)
+                then?(self)
                 return .opened
             }
         }
         if let item = library.first(where: { $0.id == id }) { return reopenBook(item, quiet: quiet, then: then) }
-        then?(false)
+        then?(nil)
         return .failed
     }
 
@@ -717,7 +705,7 @@ final class StudyStore {
             if let preferred, let index = order.firstIndex(of: preferred) { order.insert(order.remove(at: index), at: 0) }
             showFirstOpenable(order)
         }
-        saveTabs()
+        saveWorkbench()
     }
 
     /// Lets go of what an open book holds: its document, analysis, reference index, notebooks' kernels and file access.
@@ -731,6 +719,60 @@ final class StudyStore {
         accessedSources.removeValue(forKey: id)?.stopAccessingSecurityScopedResource()
     }
 
+    /// What a window gives another with a book's tab: its loaded document and what was built from it, so the book is
+    /// shown there without being read or analysed again, and its notebooks keep running.
+    struct BookHandover {
+        let tab: BookTab
+        let document: PDFDocument?
+        let referenceIndex: ReferenceIndex?
+        let analysis: BookAnalysisModel?
+        let outline: OutlineCacheEntry?
+        let source: URL?
+    }
+
+    /// Gives a book's tab to another window: the book is saved (with the editors beside it), leaves this window without
+    /// letting go of what it holds, and the neighbouring tab takes its place when it was in front.
+    func handOverBook(_ id: String) -> BookHandover? {
+        guard let position = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+        let isCurrent = workspace?.id == id
+        if isCurrent { flush() }
+        let tab = tabs.remove(at: position)
+        let handover = BookHandover(tab: tab, document: documents.removeValue(forKey: id), referenceIndex: referenceIndexes.removeValue(forKey: id),
+                                    analysis: analyses.removeValue(forKey: id), outline: outlineCache.removeValue(forKey: id),
+                                    source: accessedSources.removeValue(forKey: id))
+        recentDocuments.removeAll { $0 == id }
+        if isCurrent {
+            let start = min(position, max(tabs.count - 1, 0))
+            showFirstOpenable(Array(tabs[start...].map(\.id)) + Array(tabs[..<start].reversed().map(\.id)))
+        }
+        saveWorkbench()
+        return handover
+    }
+
+    /// Takes a book's tab from another window, at a tab's place (or at the end), and brings it to the front.
+    func receive(_ handover: BookHandover, onto targetID: String?) {
+        let id = handover.tab.id
+        if let document = handover.document { documents[id] = document }
+        if let index = handover.referenceIndex { referenceIndexes[id] = index }
+        if let model = handover.analysis { analyses[id] = model }
+        if let outline = handover.outline { outlineCache[id] = outline }
+        if let source = handover.source { accessedSources.removeValue(forKey: id)?.stopAccessingSecurityScopedResource(); accessedSources[id] = source }
+        tabs.removeAll { $0.id == id }
+        tabs.insert(handover.tab, at: targetID.flatMap { target in tabs.firstIndex { $0.id == target } } ?? tabs.endIndex)
+        activateBook(id)
+        saveWorkbench()
+    }
+
+    /// Lets go of everything this window's workbench holds: its window closed while others remain open.
+    func discard() {
+        if debug != nil { stopDebugging() }
+        flush()
+        if let pending = openingFile { openingFile = nil; pending.cancel() }
+        tracker?.stop()
+        for id in Set(tabs.map(\.id) + (workspace.map { [$0.id] } ?? [])) { release(id) }
+        tabs = []
+    }
+
     /// Shows the first of these tabs whose book opens. Tabs whose PDF cannot be opened (moved, deleted, on a disk that is
     /// not connected) are closed as well, with one notification, so ⌘W never sticks on them.
     private func showFirstOpenable(_ candidates: [String], skipped: [String] = []) {
@@ -740,9 +782,9 @@ final class StudyStore {
             let title = tabs.first { $0.id == id }?.title ?? library.first { $0.id == id }?.title ?? "A book"
             let rest = Array(remaining)
             var synchronous = true
-            let outcome = activateBook(id, quiet: true) { [weak self] opened in
+            let outcome = activateBook(id, quiet: true) { [weak self] shown in
                 guard !synchronous, let self else { return }
-                if opened { self.reportClosedTabs(skipped) }
+                if shown != nil { self.reportClosedTabs(skipped) }
                 else { self.dropTab(id); self.showFirstOpenable(rest, skipped: skipped + [title]) }
             }
             synchronous = false
@@ -762,7 +804,7 @@ final class StudyStore {
     private func dropTab(_ id: String) {
         tabs.removeAll { $0.id == id }
         release(id)
-        saveTabs()
+        saveWorkbench()
     }
 
     private func reportClosedTabs(_ titles: [String]) {
@@ -790,16 +832,15 @@ final class StudyStore {
         if let projectEditor { showSideEditor(.project(projectEditor)) }
         status = ""; browserStatus = ""
         if !keepingSideBar, navigatorSection != .search { navigatorSection = .library }
-        UserDefaults.standard.removeObject(forKey: "lastWorkspaceID")
     }
 
-    private func saveTabs() { UserDefaults.standard.set(tabs.map(\.id), forKey: "openTabs"); saveWorkbench() }
 
     func reopen(_ item: StudyWorkspace) { reopenBook(item) }
 
     /// Opens a library book from its file (found again through its bookmark when it moved), or switches to its tab.
     @discardableResult
-    func reopenBook(_ item: StudyWorkspace, quiet: Bool = false, then: ((Bool) -> Void)? = nil) -> OpenOutcome {
+    func reopenBook(_ item: StudyWorkspace, quiet: Bool = false, then: ((StudyStore?) -> Void)? = nil) -> OpenOutcome {
+        if let owner = app.owner(of: item.id), owner !== self { app.show(owner); return owner.activateBook(item.id, quiet: quiet, then: then) }
         if documents[item.id] != nil { return activateBook(item.id, quiet: quiet, then: then) }
         var url = URL(fileURLWithPath: item.sourcePath)
         if let bookmark = item.sourceBookmark {
@@ -809,56 +850,50 @@ final class StudyStore {
         return openFile(url, quiet: quiet, then: then)
     }
 
-    func restore() {
-        // The window's onAppear runs again when the window is reopened from the Dock: the session is restored once, or
-        // the book's side tabs would be replaced by the home editors (and saved that way).
-        guard !restoreStarted else { return }
-        restoreStarted = true
-        // Quitting saves and stops helpers even once this window is closed, and works while a sheet is shown.
-        AppLifecycle.shared.attach(self)
-        PageThemeState.shared.theme = pageTheme
-        // Reopening the book saves its session, including clearing any special editor in front.
-        let savedActiveSpecial = workbench.activeSpecial
-        if hasSavedSession {
-            workbenchLayout = workbench.layout; selectedProjectID = workbench.projectID
-            showLibrary = workbench.showLibrary; showStudy = workbench.showStudy; showPanel = workbench.showPanel
-            panelTab = workbench.panelTab; navigatorSection = workbench.navigator
-            sideEditors = workbench.homeEditors.filter { if case let .project(id) = $0 { projects.contains { $0.id == id && !$0.archived } } else { false } }
-            activeSideEditorID = workbench.activeHomeEditorID
-            specialTabs = workbench.specialTabs ?? []
-        }
-        // Tabs from the last session come back without loading their documents until they are shown. A book whose
-        // workspace could not be read keeps its place in the saved session, for when its file is readable again.
-        let ids = hasSavedSession ? workbench.bookIDs : (UserDefaults.standard.stringArray(forKey: "openTabs") ?? [])
-        let unreadable = Set(unreadableWorkspaces.map(\.id))
-        preservedTabIDs = ids.filter { unreadable.contains($0) }
-        tabs = ids.compactMap { id in
-            library.first { $0.id == id }.map { BookTab(id: id, title: $0.title) }
+    /// Restores this window's workbench as it was saved. Its tabs come back without loading their documents until they
+    /// are shown; a book whose workspace could not be read keeps its place, for when its file is readable again. The
+    /// first window also opens what Lemma was asked to open at launch.
+    func restore(_ saved: WindowSession?, first: Bool) {
+        if let saved {
+            savedWindow = saved
+            placement = saved.frame.map { WindowPlacement(topLeft: NSPoint(x: $0.minX, y: $0.maxY), size: $0.size) }
+            workbenchLayout = saved.layout; selectedProjectID = saved.projectID
+            showLibrary = saved.showLibrary; showStudy = saved.showStudy; showPanel = saved.showPanel
+            panelTab = saved.panelTab; navigatorSection = saved.navigator
+            sideEditors = saved.homeEditors.filter { if case let .project(id) = $0 { projects.contains { $0.id == id && !$0.archived } } else { false } }
+            activeSideEditorID = saved.activeHomeEditorID
+            specialTabs = saved.specialTabs
+            let unreadable = Set(app.unreadableWorkspaces.map(\.id))
+            preservedTabIDs = saved.bookIDs.filter { unreadable.contains($0) }
+            tabs = saved.bookIDs.compactMap { id in library.first { $0.id == id }.map { BookTab(id: id, title: $0.title) } }
         }
         let args = CommandLine.arguments
-        if let index = args.firstIndex(of: "--open"), args.indices.contains(index + 1) {
+        if first, let index = args.firstIndex(of: "--open"), args.indices.contains(index + 1) {
             let page = args.firstIndex(of: "--page").flatMap { args.indices.contains($0 + 1) ? Int(args[$0 + 1]) : nil }
-            openFile(URL(fileURLWithPath: args[index + 1])) { [weak self] opened in
-                guard opened, let self, let page else { return }
-                self.workspace?.reading.pageIndex = max(0, page - 1)
-                self.workspace?.reading.positionX = nil; self.workspace?.reading.positionY = nil
-                if let id = self.workspace?.id { self.whenShowing(id) { $0.reader.goToPage(page) } }
+            openFile(URL(fileURLWithPath: args[index + 1])) { store in
+                guard let store, let page else { return }
+                store.workspace?.reading.pageIndex = max(0, page - 1)
+                store.workspace?.reading.positionX = nil; store.workspace?.reading.positionY = nil
+                if let id = store.workspace?.id { store.whenShowing(id) { $0.reader.goToPage(page) } }
             }
-        } else if let id = hasSavedSession ? workbench.activeBookID : UserDefaults.standard.string(forKey: "lastWorkspaceID"), let item = library.first(where: { $0.id == id }) {
+        } else if let id = saved?.activeBookID, let item = library.first(where: { $0.id == id }) {
             reopen(item)
         }
-        // A special editor in front stays in front; with nothing open, the Welcome page greets the reader, as in VS Code.
-        if let special = savedActiveSpecial, specialTabs.contains(special) {
+        // A special editor in front stays in front (reopening the book above saved the session without it).
+        if let special = saved?.activeSpecial, specialTabs.contains(special) {
             activeSpecial = special
             saveWorkbench()
         }
         restored = true
         let requested = pendingFileOpens; pendingFileOpens = []
         for url in requested { open(url) }
-        if workspace == nil, activeSpecial == nil, openingFile == nil, (UserDefaults.standard.string(forKey: "workbench.startupEditor") ?? "welcomePage") == "welcomePage" {
-            openSpecial(.welcome)
-        }
-        if let message = error { error = nil; notify(message, severity: .error) }
+        if workspace == nil, activeSpecial == nil, openingFile == nil { startEmpty() }
+    }
+
+    /// With nothing open, the Welcome page greets the reader, as in VS Code (unless the startup editor is None).
+    func startEmpty() {
+        restored = true
+        if (UserDefaults.standard.string(forKey: "workbench.startupEditor") ?? "welcomePage") == "welcomePage" { openSpecial(.welcome) }
     }
 
     func capture() throws -> SourceAnchor {
@@ -1137,20 +1172,21 @@ final class StudyStore {
     /// asked to move only once it shows that book; a book that does not open leaves the reader where it was.
     func openSearchResult(workspace book: StudyWorkspace, note: StudyNote) {
         reader.cancelSearch()
-        let show = { [weak self] in
-            guard let self, self.workspace?.id == book.id else { return }
-            self.selectNote(note.id); self.noteQuery = ""; self.noteFilter = .all
-            self.whenShowing(book.id) { $0.reader.go(to: note.anchor) }
+        let show = { (store: StudyStore) in
+            guard store.workspace?.id == book.id else { return }
+            store.selectNote(note.id); store.noteQuery = ""; store.noteFilter = .all
+            store.whenShowing(book.id) { $0.reader.go(to: note.anchor) }
         }
-        if workspace?.id == book.id { show(); return }
-        reopenBook(book) { [weak self] opened in
-            guard opened, let self, self.workspace?.id == book.id else { return }
+        if workspace?.id == book.id { show(self); return }
+        // The window that shows the book: this one, or the one it is open in.
+        reopenBook(book) { store in
+            guard let store, store.workspace?.id == book.id else { return }
             // A book shown for the first time opens straight at the note rather than at its last position.
-            if self.reader.view?.document !== self.document {
-                self.workspace?.reading.pageIndex = note.anchor.pageIndex
-                self.workspace?.reading.positionX = nil; self.workspace?.reading.positionY = nil
+            if store.reader.view?.document !== store.document {
+                store.workspace?.reading.pageIndex = note.anchor.pageIndex
+                store.workspace?.reading.positionX = nil; store.workspace?.reading.positionY = nil
             }
-            show()
+            show(store)
         }
     }
 
@@ -1194,7 +1230,7 @@ final class StudyStore {
     /// `wait` returns once everything queued is on disk and reports a failure at once.
     func save(wait: Bool) {
         saveTimer.cancel()
-        flushProjects()
+        app.flushProjects()
         captureViewport()
         saveWorkbench()
         if let workspace { persist(workspace, final: wait) }
@@ -1405,8 +1441,10 @@ final class StudyStore {
     }
 
     func pollBrowser() {
-        // A response belongs to its original book, even while the reader studies another tab.
-        let books = (workspace.map { [$0] } ?? []) + library.filter { $0.id != workspace?.id && $0.notes.contains { $0.pendingRequestID != nil } }
+        // A response belongs to its original book, even while the reader studies another tab. A book in front of another
+        // window is that window's to collect.
+        let others = Set(app.windows.compactMap { $0 === self ? nil : $0.workspace?.id })
+        let books = (workspace.map { [$0] } ?? []) + library.filter { $0.id != workspace?.id && !others.contains($0.id) && $0.notes.contains { $0.pendingRequestID != nil } }
         for book in books {
         for note in book.notes {
             guard let id = note.pendingRequestID else { continue }

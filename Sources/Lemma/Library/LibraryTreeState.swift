@@ -140,7 +140,7 @@ extension StudyStore {
 
     func libraryTreeInput(expandingAll: Bool, activeBookID: String?) -> LibraryTreeInput {
         let creating = libraryCreatingIn
-        var expanded = paneExpanded
+        var expanded = app.paneExpanded
         if expandingAll {
             // Every container open, to find where a book is.
             expanded = [:]
@@ -170,7 +170,7 @@ extension StudyStore {
                                  due: book.notes.reduce(0) { count, note in note.isDue(at: now) ? count + 1 : count })
         }
         let signature = LibraryTreeMemo.Signature(libraries: libraries.revision, books: books, query: libraryQuery, sort: librarySort,
-                                                  expanded: paneExpanded, openTabs: tabs.map(\.id), activeBookID: activeBookID, creatingIn: libraryCreatingIn)
+                                                  expanded: app.paneExpanded, openTabs: tabs.map(\.id), activeBookID: activeBookID, creatingIn: libraryCreatingIn)
         if let memo = libraryTree.memo, memo.signature == signature { return memo.rows }
         var input = libraryTreeInput(expandingAll: false, activeBookID: activeBookID)
         input.now = now
@@ -185,18 +185,18 @@ extension StudyStore {
 
     func setLibraryRow(_ row: LibraryRow, expanded: Bool) {
         guard libraryQuery.isEmpty, let key = LibraryTreeBuilder.expansionKey(row.kind) else { return }
-        if (paneExpanded[key] ?? LibraryTreeBuilder.expandedByDefault(row.kind)) != expanded { paneExpanded[key] = expanded }
+        if (app.paneExpanded[key] ?? LibraryTreeBuilder.expandedByDefault(row.kind)) != expanded { app.paneExpanded[key] = expanded }
     }
 
     func toggleLibraryRow(_ row: LibraryRow) { setLibraryRow(row, expanded: !row.expanded) }
 
     /// Closes every library, section and folder (VS Code's Collapse Folders in Explorer).
     func collapseLibrary() {
-        var panes = paneExpanded
+        var panes = app.paneExpanded
         for key in panes.keys where key.hasPrefix("collection-") || key.hasPrefix("library-folder-") { panes[key] = false }
         for collection in libraries.collections where panes["collection-" + collection.id] == nil { panes["collection-" + collection.id] = false }
         panes["collection-unfiled"] = false
-        paneExpanded = panes
+        app.paneExpanded = panes
     }
 
     // MARK: Clicking
@@ -269,7 +269,7 @@ extension StudyStore {
         guard let row = all.first(where: { $0.bookID == id }) else { return false }
         var ancestor = row.parentID
         while let current = ancestor, let parent = all.first(where: { $0.id == current }) {
-            if libraryQuery.isEmpty, let key = LibraryTreeBuilder.expansionKey(parent.kind), paneExpanded[key] != true { paneExpanded[key] = true }
+            if libraryQuery.isEmpty, let key = LibraryTreeBuilder.expansionKey(parent.kind), app.paneExpanded[key] != true { app.paneExpanded[key] = true }
             ancestor = parent.parentID
         }
         // Only what changes is written: the tree redraws when its selection really moves.
@@ -309,8 +309,8 @@ extension StudyStore {
         reveal(.library)
         libraryQuery = ""
         if let parent {
-            paneExpanded["collection-parent-" + parent] = true
-            if let host = LibraryEditing.host(of: parent, in: libraries.collections) { paneExpanded["collection-" + host.id] = true }
+            app.paneExpanded["collection-parent-" + parent] = true
+            if let host = LibraryEditing.host(of: parent, in: libraries.collections) { app.paneExpanded["collection-" + host.id] = true }
         }
         let id = "new:" + (parent ?? "")
         libraryTree.editor = LibraryEditor(rowID: id, kind: .newLibrary(parent: parent), text: "", mode: .lemma, names: [:])

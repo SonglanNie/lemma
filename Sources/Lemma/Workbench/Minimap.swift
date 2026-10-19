@@ -15,7 +15,7 @@ struct PageMinimap: View {
         let byPage = marks.update(store: store, colors: theme)
         // Miniatures depend on the page theme only; the workbench theme changes the marks and the slider.
         MinimapSurface(store: store, marks: byPage, marksRevision: marks.revision, pageThemeRevision: store.pageThemeRevision,
-                       themeRevision: ThemeManager.shared.revision, colors: theme, sliderAlways: store.minimapSliderAlways)
+                       themeRevision: ThemeManager.shared.revision, colors: theme, sliderAlways: store.app.minimapSliderAlways)
             .frame(width: 96)
             .background(theme[.minimapBackground])
             .vsBorder(.leading, .editorGroupBorder, theme: theme)

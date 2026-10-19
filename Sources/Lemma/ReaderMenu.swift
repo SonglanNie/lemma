@@ -130,7 +130,7 @@ extension StudyStore {
         case .bookmark: toggleBookmark()
         case let .marginNote(page, region, quote): addMarginNote(pageIndex: page, region: region, quote: quote)
         case let .derive(selection): restore(selection); deriveSelection()
-        case let .watch(term): addWatch(term); reveal(.debug); paneExpanded["debug.watch"] = true
+        case let .watch(term): addWatch(term); reveal(.debug); app.paneExpanded["debug.watch"] = true
         case let .breakpoint(page, point):
             let wasOn = reader.rulerMode, previous = reader.rulerLine
             reader.placeRuler(at: point, pageIndex: page)

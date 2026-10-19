@@ -452,6 +452,10 @@ extension StudyStore {
     /// they gather it in their session and write it once when the cell ends.
     func updateLab(_ id: UUID, workspaceID: String? = nil, save: Bool = true, _ edit: (inout LabNotebook) -> Void) {
         let owner = workspaceID ?? workspace?.id
+        // The book went to another window while a cell ran: its output goes there.
+        if let owner, owner != workspace?.id, let showing = app.windows.first(where: { $0.workspace?.id == owner }) {
+            showing.updateLab(id, workspaceID: owner, save: save, edit); return
+        }
         if owner == workspace?.id, let index = workspace?.labs.firstIndex(where: { $0.id == id }) {
             edit(&workspace!.labs[index])
             workspace!.labs[index].updatedAt = .now

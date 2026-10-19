@@ -11,14 +11,12 @@ final class InkTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("source.pdf")
         let image = NSImage(size: CGSize(width: 300, height: 400), flipped: false) { rect in NSColor.white.setFill(); rect.fill(); return true }
         let pdf = PDFDocument(); pdf.insert(try XCTUnwrap(PDFPage(image: image)), at: 0)
         XCTAssertTrue(pdf.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support")); store.open(source)
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); store.open(source)
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1000, height: 700), styleMask: .titled, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ReaderWindow(store: store))
@@ -44,14 +42,12 @@ final class InkTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("source.pdf")
         let image = NSImage(size: CGSize(width: 300, height: 400), flipped: false) { rect in NSColor.white.setFill(); rect.fill(); return true }
         let pdf = PDFDocument(); pdf.insert(try XCTUnwrap(PDFPage(image: image)), at: 0)
         XCTAssertTrue(pdf.write(to: source)); let original = try Data(contentsOf: source)
-        let store = StudyStore(root: root.appendingPathComponent("support")); store.open(source)
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); store.open(source)
         let page = try XCTUnwrap(store.document?.page(at: 0))
         let view = RegionPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 700))
         view.controller = store.reader; store.reader.view = view; view.document = store.document; view.autoScales = true
@@ -81,7 +77,7 @@ final class InkTests: XCTestCase {
         view.autoScales = false; view.scaleFactor = 2
         store.reader.showAnnotations = false; store.reader.syncInk([stroke], in: try XCTUnwrap(store.document)); XCTAssertTrue(page.annotations.isEmpty)
         store.reader.showAnnotations = true; store.reader.syncInk([stroke], in: try XCTUnwrap(store.document)); XCTAssertEqual(page.annotations.count, 1)
-        let reopened = StudyStore(root: root.appendingPathComponent("support")); reopened.open(source)
+        let reopened = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); reopened.open(source)
         XCTAssertEqual(reopened.workspace?.inkStrokes, [stroke]); XCTAssertEqual(reopened.workspace?.schemaVersion, 10)
         try reopened.repository.export(try XCTUnwrap(reopened.workspace), to: root.appendingPathComponent("export"))
         let svg = try String(contentsOf: root.appendingPathComponent("export/assets/ink-page-1.svg"), encoding: .utf8)

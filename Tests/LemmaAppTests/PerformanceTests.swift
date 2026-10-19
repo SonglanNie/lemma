@@ -17,9 +17,7 @@ final class PerformanceTests: XCTestCase {
             throw XCTSkip("Opt-in real-book minimap measurements.")
         }
         _ = NSApplication.shared
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        let previousTabs = UserDefaults.standard.object(forKey: "openTabs")
-        let store = StudyStore(root: URL(fileURLWithPath: support))
+        let store = StudyStore(app: AppModel(root: URL(fileURLWithPath: support)))
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 796, height: 700), styleMask: .borderless, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         let content = NSView(frame: window.contentLayoutRect)
@@ -28,8 +26,6 @@ final class PerformanceTests: XCTestCase {
         window.contentView = content; content.addSubview(view); content.addSubview(minimap)
         defer {
             store.analysis?.cancel(); window.close()
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
-            UserDefaults.standard.set(previousTabs, forKey: "openTabs")
         }
         store.open(URL(fileURLWithPath: pdf))
         view.controller = store.reader; store.reader.view = view
@@ -85,13 +81,9 @@ final class PerformanceTests: XCTestCase {
             throw XCTSkip("Opt-in real-book scroll measurements.")
         }
         _ = NSApplication.shared
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        let previousTabs = UserDefaults.standard.object(forKey: "openTabs")
-        let store = StudyStore(root: URL(fileURLWithPath: support))
+        let store = StudyStore(app: AppModel(root: URL(fileURLWithPath: support)))
         defer {
             store.analysis?.cancel()
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
-            UserDefaults.standard.set(previousTabs, forKey: "openTabs")
         }
         store.open(URL(fileURLWithPath: pdf))
         let document = try XCTUnwrap(store.document)
@@ -124,15 +116,11 @@ final class PerformanceTests: XCTestCase {
             throw XCTSkip("Opt-in real-book performance measurements.")
         }
         _ = NSApplication.shared
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        let previousTabs = UserDefaults.standard.object(forKey: "openTabs")
-        let store = StudyStore(root: URL(fileURLWithPath: support))
+        let store = StudyStore(app: AppModel(root: URL(fileURLWithPath: support)))
         let window = NSWindow(contentRect: CGRect(x: 40, y: 40, width: 1300, height: 860), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         defer {
             store.flush(); store.analysis?.cancel(); window.close()
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
-            UserDefaults.standard.set(previousTabs, forKey: "openTabs")
         }
         var metrics: [String: Any] = [:]
         let start = CACurrentMediaTime()

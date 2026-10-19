@@ -27,8 +27,8 @@ final class ResearchWorkspaceTests: XCTestCase {
         XCTAssertEqual(saved.origin?.region, request.region)
         XCTAssertEqual(saved.origin?.pageIndex, request.pageIndex)
         store.flush()
-        let restarted = StudyStore(root: store.repository.root)
-        restarted.restore()
+        let restarted = StudyStore(app: AppModel(root: store.repository.root))
+        restarted.app.restore()
         XCTAssertEqual(restarted.openDerivationID, id)
         XCTAssertEqual(restarted.derivation(id)?.source, saved.source)
     }
@@ -59,8 +59,8 @@ final class ResearchWorkspaceTests: XCTestCase {
         XCTAssertEqual(store.selectedNoteID, note.id)
         XCTAssertEqual(store.studySection, .glossary)
         store.flush()
-        let reopened = StudyStore(root: store.repository.root)
-        reopened.restore()
+        let reopened = StudyStore(app: AppModel(root: store.repository.root))
+        reopened.app.restore()
         XCTAssertEqual(reopened.workspace?.id, bookID)
         XCTAssertEqual(reopened.sideEditors.count, 2)
         XCTAssertEqual(reopened.activeSideEditorID, pageID, "Persisted editor IDs must be stable.")
@@ -85,7 +85,7 @@ final class ResearchWorkspaceTests: XCTestCase {
         store.reader.selection = (1, rect, "The normal equations"); store.reader.hasSelection = true
         store.collectSelection(projectID: projectID)
         let first = try XCTUnwrap(store.project(projectID)?.passages.first)
-        let image = try Data(contentsOf: store.projectRepository.imageURL(projectID, name: first.anchor.imageName))
+        let image = try Data(contentsOf: store.app.projectRepository.imageURL(projectID, name: first.anchor.imageName))
         XCTAssertNotNil(NSImage(data: image))
         XCTAssertEqual(first.anchor.pageIndex, 1)
         store.open(fixture.paper)
@@ -99,9 +99,9 @@ final class ResearchWorkspaceTests: XCTestCase {
         store.openProjectPassage(first, projectID: projectID)
         XCTAssertEqual(store.workspace?.id, first.bookID)
         XCTAssertEqual(store.activeSideEditor, .project(projectID))
-        XCTAssertEqual(try Data(contentsOf: store.projectRepository.imageURL(projectID, name: first.anchor.imageName)), image)
+        XCTAssertEqual(try Data(contentsOf: store.app.projectRepository.imageURL(projectID, name: first.anchor.imageName)), image)
         store.flush()
-        XCTAssertEqual(try store.projectRepository.load().first?.passages.count, 2)
+        XCTAssertEqual(try store.app.projectRepository.load().first?.passages.count, 2)
     }
 
     @MainActor
@@ -133,25 +133,40 @@ final class ResearchWorkspaceTests: XCTestCase {
         defer { fixture.close() }
         let store = fixture.store
         let projectID = try XCTUnwrap(store.newProject(title: "An independent question"))
-        store.updateProject(projectID) { $0.synthesis = "Start with the assumptions." }
+        store.app.updateProject(projectID) { $0.synthesis = "Start with the assumptions." }
         store.flush()
-        let emptyRestart = StudyStore(root: store.repository.root)
-        emptyRestart.restore()
+        let emptyRestart = StudyStore(app: AppModel(root: store.repository.root))
+        emptyRestart.app.restore()
         XCTAssertNil(emptyRestart.document)
         XCTAssertEqual(emptyRestart.activeSideEditor, .project(projectID))
         XCTAssertEqual(emptyRestart.currentProject?.synthesis, "Start with the assumptions.")
         store.open(fixture.book)
         store.open(fixture.paper)
         let first = store.tabs[0].id, second = store.tabs[1].id
-        store.moveTab(second, before: first)
+        // A drag to the right: the first tab dropped on the second takes its place.
+        store.moveTab(first, onto: second)
         store.flush()
-        let restart = StudyStore(root: store.repository.root)
-        restart.restore()
+        let restart = StudyStore(app: AppModel(root: store.repository.root))
+        restart.app.restore()
         XCTAssertEqual(restart.tabs.map(\.id), [second, first])
         XCTAssertEqual(restart.workspace?.id, second)
         store.closeOtherTabs(keeping: first)
         XCTAssertEqual(store.tabs.map(\.id), [first])
         restart.flush()
+    }
+
+    func testATabDroppedOnAnotherTakesItsPlaceInEitherDirection() {
+        struct Tab: Identifiable { let id: String }
+        var tabs = ["a", "b", "c", "d"].map(Tab.init)
+        XCTAssertTrue(tabs.move("a", onto: "b"))
+        XCTAssertEqual(tabs.map(\.id), ["b", "a", "c", "d"])
+        XCTAssertTrue(tabs.move("b", onto: "d"))
+        XCTAssertEqual(tabs.map(\.id), ["a", "c", "d", "b"])
+        XCTAssertTrue(tabs.move("d", onto: "a"))
+        XCTAssertEqual(tabs.map(\.id), ["d", "a", "c", "b"])
+        XCTAssertFalse(tabs.move("c", onto: "c"))
+        XCTAssertFalse(tabs.move("c", onto: "missing"))
+        XCTAssertEqual(tabs.map(\.id), ["d", "a", "c", "b"])
     }
 
     @MainActor
@@ -163,8 +178,8 @@ final class ResearchWorkspaceTests: XCTestCase {
         let original = Data("interrupted or future project data".utf8)
         let manifest = folder.appendingPathComponent("projects.json")
         try original.write(to: manifest)
-        let store = StudyStore(root: root)
-        XCTAssertNotNil(store.error)
+        let store = StudyStore(app: AppModel(root: root))
+        XCTAssertNotNil(store.app.startupError, "The first window says so once it is restored.")
         XCTAssertNil(store.newProject())
         store.flush()
         XCTAssertEqual(try Data(contentsOf: manifest), original)

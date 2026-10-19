@@ -11,12 +11,10 @@ final class DefinitionLookupTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("source.pdf")
         try Self.sourcePDF().write(to: source)
-        let store = StudyStore(root: root.appendingPathComponent("support")); store.open(source)
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); store.open(source)
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1100, height: 750), styleMask: .titled, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: ReaderWindow(store: store))
@@ -44,13 +42,11 @@ final class DefinitionLookupTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let oldLastWorkspace = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(oldLastWorkspace, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("definitions.pdf")
         let originalBytes = try Self.sourcePDF()
         try originalBytes.write(to: source)
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         let document = try XCTUnwrap(store.document)
         let view = RegionPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 700))

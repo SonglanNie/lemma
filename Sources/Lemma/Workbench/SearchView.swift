@@ -209,7 +209,7 @@ final class PageTextCache: @unchecked Sendable {
 @MainActor
 extension StudyStore {
     func runLibrarySearch() {
-        let search = librarySearch
+        let search = app.librarySearch
         let books: [StudyWorkspace] = search.scope == .book ? (workspace.map { [$0] } ?? []) : library
         let current = workspace?.id
         if current != nil { reader.resetSearch() }
@@ -250,7 +250,7 @@ struct VSSearchView: View {
     }
 
     var body: some View {
-        let search = store.librarySearch
+        let search = store.app.librarySearch
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(Mode.allCases, id: \.self) { option in

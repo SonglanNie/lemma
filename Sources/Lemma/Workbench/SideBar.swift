@@ -42,9 +42,9 @@ struct VSSideBar: View {
             VSIconButton(icon: "new-folder", help: "New Research Project") { store.newProject() }
             VSIconButton(icon: "collapse-all", help: "Collapse Outline") { store.outlineExpanded = [] }
         case .search:
-            VSIconButton(icon: "refresh", help: "Search Again", enabled: !store.librarySearch.query.isEmpty) { store.runLibrarySearch() }
-            VSIconButton(icon: "clear-all", help: "Clear Search Results", enabled: !store.librarySearch.results.isEmpty || !store.reader.searchResults.isEmpty) {
-                store.librarySearch.clear(); store.reader.resetSearch()
+            VSIconButton(icon: "refresh", help: "Search Again", enabled: !store.app.librarySearch.query.isEmpty) { store.runLibrarySearch() }
+            VSIconButton(icon: "clear-all", help: "Clear Search Results", enabled: !store.app.librarySearch.results.isEmpty || !store.reader.searchResults.isEmpty) {
+                store.app.librarySearch.clear(); store.reader.resetSearch()
             }
         case .structure:
             VSIconButton(icon: store.allProofsFolded ? "unfold" : "fold", help: store.allProofsFolded ? "Unfold All Proofs (⌥⌘[)" : "Fold All Proofs (⌥⌘[)",

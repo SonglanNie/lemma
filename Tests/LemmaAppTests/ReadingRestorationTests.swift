@@ -22,8 +22,8 @@ final class ReadingRestorationTests: XCTestCase {
         let saved = try XCTUnwrap(store.workspace?.reading)
         XCTAssertEqual(saved.pageIndex, 2)
 
-        let restarted = StudyStore(root: store.repository.root)
-        restarted.restore()
+        let restarted = StudyStore(app: AppModel(root: store.repository.root))
+        restarted.app.restore()
         fixture.window.contentView = NSHostingView(rootView: ReaderWindow(store: restarted))
         try await fixture.settle(500)
         restarted.flush()

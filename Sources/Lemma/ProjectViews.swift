@@ -150,14 +150,14 @@ struct ProjectEditor: View {
                 Divider()
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
-                    Text(store.projectsDirty ? "Unsaved changes · Markdown & LaTeX" : "Saved locally · Markdown & LaTeX")
+                    Text(store.app.projectsDirty ? "Unsaved changes · Markdown & LaTeX" : "Saved locally · Markdown & LaTeX")
                     Spacer(minLength: 0)
                     Text("\(project.synthesis.split(whereSeparator: \.isWhitespace).count) words").monospacedDigit()
                 }.font(.system(size: 10.5)).foregroundStyle(.secondary).padding(.horizontal, 12).frame(height: 25)
             }
             .background(Color(nsColor: .textBackgroundColor))
             .onAppear { titleFocused = project.title == "Untitled Project" }
-            .onDisappear { store.flushProjects() }
+            .onDisappear { store.app.flushProjects() }
         } else {
             PaneEmptyState(symbol: "folder", title: "Project closed", message: "Open a project from the Projects explorer.")
         }
@@ -165,7 +165,7 @@ struct ProjectEditor: View {
 
     private func field(_ keyPath: WritableKeyPath<ResearchProject, String>) -> Binding<String> {
         Binding(get: { store.project(projectID)?[keyPath: keyPath] ?? "" }, set: { value in
-            store.updateProject(projectID) { $0[keyPath: keyPath] = value }
+            store.app.updateProject(projectID) { $0[keyPath: keyPath] = value }
         })
     }
 
@@ -177,7 +177,7 @@ struct ProjectEditor: View {
             Menu {
                 Button("Search Project Books") { store.searchProject(projectID) }
                 Button("Export Project…") { store.exportProject(projectID) }
-                Button("Reveal Project Files") { NSWorkspace.shared.activateFileViewerSelecting([store.projectRepository.directory(projectID)]) }
+                Button("Reveal Project Files") { NSWorkspace.shared.activateFileViewerSelecting([store.app.projectRepository.directory(projectID)]) }
                 Divider()
                 Button("Archive Project") { store.archiveProject(projectID, archived: true) }
             } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 20)
@@ -273,7 +273,7 @@ private struct ProjectSourceRow: View {
                     .buttonStyle(.borderless).help("Open the exact source beside this project").accessibilityLabel("Open \(source.sourceLabel) in the book")
             }
             if expanded {
-                if let image = NSImage(contentsOf: store.projectRepository.imageURL(projectID, name: source.anchor.imageName)) {
+                if let image = NSImage(contentsOf: store.app.projectRepository.imageURL(projectID, name: source.anchor.imageName)) {
                     Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 220)
                         .background(.white).accessibilityLabel("Original crop of \(source.sourceLabel)")
                 }
@@ -286,7 +286,7 @@ private struct ProjectSourceRow: View {
                 TextField("Why this source matters…", text: Binding(get: {
                     store.project(projectID)?.passages.first { $0.id == source.id }?.annotation ?? ""
                 }, set: { value in
-                    store.updateProject(projectID) { project in
+                    store.app.updateProject(projectID) { project in
                         if let index = project.passages.firstIndex(where: { $0.id == source.id }) { project.passages[index].annotation = value }
                     }
                 }), axis: .vertical).textFieldStyle(.plain).font(.callout).lineLimit(2...8)

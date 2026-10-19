@@ -24,7 +24,7 @@ final class WorkbenchInteractionTests: XCTestCase {
         store.open(fixture.book)
         store.navigatorSection = .library
         store.showLibrary = true
-        store.paneExpanded = ["explorer.open": false, "explorer.library": true, "explorer.outline": true,
+        store.app.paneExpanded = ["explorer.open": false, "explorer.library": true, "explorer.outline": true,
                               "explorer.timeline": false, "explorer.pages": false]
         try await fixture.settle(350)
         func handles(_ view: NSView) -> [ResizeSashView] {
@@ -45,9 +45,9 @@ final class WorkbenchInteractionTests: XCTestCase {
         handle.mouseDown(with: try event(.leftMouseDown, dy: 0))
         handle.mouseDragged(with: try event(.leftMouseDragged, dy: -60))
         handle.mouseUp(with: try event(.leftMouseUp, dy: -60))
-        XCTAssertEqual(store.workbenchLayout.explorerHeights?["explorer.library"], 280, "The 220-point default grows by the 60-point drag.")
-        let saved = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.sessionURL))
-        XCTAssertEqual(saved.layout.explorerHeights?["explorer.library"], 280)
+        XCTAssertEqual(store.workbenchLayout.explorerHeights["explorer.library"], 280, "The 220-point default grows by the 60-point drag.")
+        let saved = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.app.sessionURL))
+        XCTAssertEqual(saved.windows.first?.layout.explorerHeights["explorer.library"], 280)
     }
 
     @MainActor
@@ -128,17 +128,15 @@ final class WorkbenchInteractionTests: XCTestCase {
     }
 
     @MainActor
-    func testExplorerHeightsPersistAndOlderSessionsStillLoad() throws {
-        let oldLayout = Data(#"{"sidebarPosition":"left","activityBar":true,"sidebarWidth":264,"inspectorWidth":370}"#.utf8)
-        XCTAssertNil(try JSONDecoder().decode(WorkbenchLayout.self, from: oldLayout).explorerHeights)
+    func testExplorerHeightsPersist() throws {
         let fixture = try WorkbenchFixture()
         defer { fixture.close() }
         fixture.store.open(fixture.book)
         let heights = ["explorer.outline": 320.0, "explorer.timeline": 180.0, "explorer.pages": 150.0, "structure.results": 250.0, "debug.watch": 170.0]
         fixture.store.workbenchLayout.explorerHeights = heights
         fixture.store.saveWorkbench()
-        let restarted = StudyStore(root: fixture.store.repository.root)
-        restarted.restore()
+        let restarted = StudyStore(app: AppModel(root: fixture.store.repository.root))
+        restarted.app.restore()
         XCTAssertEqual(restarted.workbenchLayout.explorerHeights, heights)
     }
 

@@ -10,8 +10,6 @@ final class IndexedStudyTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let oldLastWorkspace = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(oldLastWorkspace, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("scan.pdf")
         let image = NSImage(size: NSSize(width: 400, height: 300), flipped: false) { rect in
@@ -22,7 +20,7 @@ final class IndexedStudyTests: XCTestCase {
         let pdf = PDFDocument(); pdf.insert(try XCTUnwrap(PDFPage(image: image)), at: 0)
         XCTAssertTrue(pdf.write(to: source))
         let original = try Data(contentsOf: source)
-        let store = StudyStore(root: root.appendingPathComponent("support")); store.open(source)
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); store.open(source)
         let id = try XCTUnwrap(store.workspace?.id)
         let wrongText = "Full co1umn rank"
         let page = IndexedPage(pageIndex: 0, pageLabel: "1", origin: .ocr,

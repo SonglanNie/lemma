@@ -35,9 +35,8 @@ struct ClassicShell: View {
         }
         .overlay(alignment: .top) { paletteOverlay }
         .background(WindowReader { window in
-            store.mainWindow = window
+            store.attach(window)
             if let window { TitleBarCoordinator.shared.attach(window) }
-            store.fitWindowToScreen()
         })
         .navigationTitle(store.workspace?.title ?? "Lemma")
     }
@@ -106,7 +105,7 @@ struct ClassicShell: View {
                         }
                         .overlay(alignment: .top) { StickyStatementBar(store: store).padding(.trailing, 14) }
                         .overlay(alignment: .top) { if store.debug != nil { DebugToolbar(store: store).padding(.top, 8) } }
-                        .overlay(alignment: .topTrailing) { if FindController.shared.isVisible { FindWidget(store: store).padding(.top, 8).padding(.trailing, 22) } }
+                        .overlay(alignment: .topTrailing) { if FindController.shared.isVisible, FindController.shared.store === store { FindWidget(store: store).padding(.top, 8).padding(.trailing, 22) } }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .modifier(EditorDropTarget(store: store))
                     } second: {

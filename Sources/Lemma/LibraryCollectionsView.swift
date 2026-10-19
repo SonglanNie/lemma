@@ -24,8 +24,8 @@ extension StudyStore {
     @discardableResult func renameLibrarySection(_ parent: String, to title: String) -> Bool {
         do {
             guard try libraries.renameSection(parent, to: title) else { return false }
-            if let expanded = paneExpanded.removeValue(forKey: "collection-parent-" + parent) {
-                paneExpanded["collection-parent-" + title.trimmingCharacters(in: .whitespacesAndNewlines)] = expanded
+            if let expanded = app.paneExpanded.removeValue(forKey: "collection-parent-" + parent) {
+                app.paneExpanded["collection-parent-" + title.trimmingCharacters(in: .whitespacesAndNewlines)] = expanded
             }
             return true
         } catch { self.error = "Could not rename this section: \(error.localizedDescription)"; return false }

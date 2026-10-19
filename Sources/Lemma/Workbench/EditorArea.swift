@@ -98,11 +98,7 @@ struct MainEditorTabs: View {
                                   select: { store.activateMainTab(tab.id) }, close: { store.closeTab(tab.id) })
                                 .id(tab.id)
                                 .contextMenu { bookTabMenu(tab) }
-                                .draggable("lemma-tab:\(tab.id)")
-                                .dropDestination(for: String.self) { values, _ in
-                                    guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
-                                    store.moveTab(String(value.dropFirst("lemma-tab:".count)), before: tab.id); return true
-                                }
+                                .bookTabDrag(store, bookID: tab.id)
                         }
                         ForEach(store.specialTabs) { editor in
                             VSTab(icon: editor.icon, title: editor.title, active: store.activeSpecial == editor,
@@ -111,11 +107,12 @@ struct MainEditorTabs: View {
                                 .contextMenu { Button("Close") { store.closeSpecial(editor) } }
                         }
                     }
-                    // The tabs scroll only once they fill the bar; its empty part keeps the bar's bottom border and
-                    // opens a PDF on a double-click, as VS Code's opens a new file.
+                    // The tabs scroll only once they fill the bar; its empty part keeps the bar's bottom border, opens a
+                    // PDF on a double-click, as VS Code's opens a new file, and takes a book tab dropped after the last tab.
                     .frame(minWidth: geometry.size.width, maxHeight: .infinity, alignment: .leading)
                     .background {
                         Color.clear.contentShape(Rectangle()).onTapGesture(count: 2) { store.choosePDF() }
+                            .bookTabBarDrop(store)
                             .overlay(alignment: .bottom) { Rectangle().fill(theme.border(.editorGroupHeaderTabsBorder)).frame(height: 1) }
                     }
                 }
@@ -154,6 +151,7 @@ struct MainEditorTabs: View {
         Divider()
         Button("Move Tab Left") { store.shiftBookTab(tab.id, by: -1) }
         Button("Move Tab Right") { store.shiftBookTab(tab.id, by: 1) }
+        Button("Move Tab to New Window") { store.app.moveBookToNewWindow(tab.id) }.disabled(!store.canMoveTabToNewWindow)
     }
 }
 
@@ -191,7 +189,7 @@ struct EditorActions: View {
                 .submenu("Page Theme", PageTheme.allCases.map { page in .action(page.label, checked: page == store.pageTheme) { store.pageTheme = page } }),
                 .separator,
                 .action("Line Numbers", checked: store.reader.showLineNumbers, shortcut: "⌃⌘L") { store.reader.showLineNumbers.toggle() },
-                .action("Minimap", checked: store.showMinimap) { store.showMinimap.toggle() },
+                .action("Minimap", checked: store.app.showMinimap) { store.app.showMinimap.toggle() },
                 .action("Link References", checked: referenceLinks) { referenceLinks.toggle() },
                 .separator,
                 .action("Fit Page", shortcut: "⌘0") { store.reader.fit() },

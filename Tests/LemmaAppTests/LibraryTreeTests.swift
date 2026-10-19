@@ -9,7 +9,7 @@ import LemmaCore
 final class LibraryTreeTests: XCTestCase {
     private var root: URL!
     private var saved: [String: Any] = [:]
-    private let keys = ["workbench.panes", "lastWorkspaceID", "openTabs", "library.sort", "library.renameMode", "library.confirmDragMove"]
+    private let keys = ["workbench.panes", "library.sort", "library.renameMode", "library.confirmDragMove"]
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("LibraryTree-\(UUID().uuidString)")
@@ -37,7 +37,7 @@ final class LibraryTreeTests: XCTestCase {
 
     @MainActor private func store(_ collections: [LibraryCollection]) async throws -> StudyStore {
         _ = NSApplication.shared
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         try store.libraries.replace(collections)
         store.libraries.start()
         try await settle(store)
@@ -164,7 +164,7 @@ final class LibraryTreeTests: XCTestCase {
         let algebra = try file("math/algebra.pdf")
         try file("math/Taken.pdf")
         let store = try await store([LibraryCollection(id: "quant", title: "Quant", kind: .studying, sources: [LibrarySource(path: math.path)])])
-        store.paneExpanded["collection-quant"] = true
+        store.app.paneExpanded["collection-quant"] = true
 
         // A PDF never opened: its name in Lemma is kept by path, and becomes its title when it is opened.
         try step(store) {
@@ -255,8 +255,8 @@ final class LibraryTreeTests: XCTestCase {
         let theory = try file("math/poker/Theory.pdf", book: true)
         let odds = try file("math/Odds.pdf")
         let store = try await store([LibraryCollection(id: "quant", title: "Quant", kind: .studying, sources: [LibrarySource(path: math.path)])])
-        store.paneExpanded["collection-quant"] = true
-        store.paneExpanded["library-folder-quant:poker"] = true
+        store.app.paneExpanded["collection-quant"] = true
+        store.app.paneExpanded["library-folder-quant:poker"] = true
         store.open(theory)
         store.flush()
         let id = try XCTUnwrap(store.workspace?.id)
@@ -304,7 +304,7 @@ final class LibraryTreeTests: XCTestCase {
             LibraryCollection(id: "csd", title: "CSD", kind: .studying, parent: "School", sources: []),
             LibraryCollection(id: "papers", title: "Papers", kind: .papers, sources: [])
         ])
-        store.paneExpanded["collection-quant"] = true
+        store.app.paneExpanded["collection-quant"] = true
         func planner() -> LibraryDropPlanner { LibraryDropPlanner(collections: store.libraries.collections, rows: store.libraryRows()) }
 
         // A PDF onto another library: listed there, the file stays; ⌥ keeps it in both.
@@ -382,7 +382,7 @@ final class LibraryTreeTests: XCTestCase {
         try step(store) { store.performLibraryDrop(plan.action) }
         try await settle(store)
         XCTAssertNil(store.libraryRows().first { $0.title == "Other PDFs" }, "Nothing is left outside the libraries")
-        store.paneExpanded["collection-b"] = true
+        store.app.paneExpanded["collection-b"] = true
         XCTAssertEqual(try row(store, "Loose notes").parentID, "library:b")
     }
 
@@ -415,7 +415,7 @@ final class LibraryTreeTests: XCTestCase {
         store.libraryTree.undoManager?.undo()
         XCTAssertTrue(store.libraries.collections.contains { $0.id == poker.id }, "Undo brings the library back")
 
-        store.paneExpanded["collection-quant"] = true
+        store.app.paneExpanded["collection-quant"] = true
         try step(store) { XCTAssertEqual(store.trashLibraryItems([calculus.path]), 1) }
         XCTAssertFalse(FileManager.default.fileExists(atPath: calculus.path))
         store.libraryTree.undoManager?.undo()
@@ -441,7 +441,7 @@ final class LibraryTreeTests: XCTestCase {
             LibraryCollection(id: "quant", title: "Quant", kind: .studying, sources: [LibrarySource(path: math.path)]),
             LibraryCollection(id: "csd", title: "CSD", kind: .studying, parent: "School", sources: [])
         ])
-        store.paneExpanded["collection-quant"] = true
+        store.app.paneExpanded["collection-quant"] = true
         let manager = ThemeManager.shared, style = manager.style
         defer { manager.style = style }
         let host = NSHostingView(rootView: LibraryCollectionsView(store: store).environment(\.theme, manager.colors))
