@@ -197,6 +197,7 @@ final class AppModel {
         for store in windows where !store.hasWindow && !store.windowRequested && restored { store.discard(); remove(store) }
         let store = waitingStore(StudyStore(app: self))
         store.placement = WindowPlacement.beside(front.mainWindow)
+        store.takeLayout(of: front)
         store.startEmpty()
         requestWindow(store)
         frontID = store.id
@@ -264,6 +265,7 @@ final class AppModel {
         guard let handover = source.handOverBook(id) else { return }
         let store = waitingStore(StudyStore(app: self))
         store.placement = topLeft.map { WindowPlacement.at($0, like: source.mainWindow) } ?? WindowPlacement.beside(source.mainWindow)
+        store.takeLayout(of: source)
         store.receive(handover, onto: nil)
         requestWindow(store)
         frontID = store.id

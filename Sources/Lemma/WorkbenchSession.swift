@@ -122,6 +122,15 @@ extension StudyStore {
         return savedWindow
     }
 
+    /// A new window lays out its workbench as the window it comes from does: the same side bars, panel and sizes (as
+    /// they were before Zen Mode, if that window is in it).
+    func takeLayout(of source: StudyStore) {
+        let saved = source.windowSession
+        workbenchLayout = saved.layout
+        showLibrary = saved.showLibrary; showStudy = saved.showStudy; showPanel = saved.showPanel
+        panelTab = saved.panelTab; navigatorSection = saved.navigator
+    }
+
     /// A tab dropped on another takes that tab's place, so a drag to the right lands after the tab dropped on.
     func moveTab(_ id: String, onto targetID: String) {
         if tabs.move(id, onto: targetID) { saveWorkbench() }

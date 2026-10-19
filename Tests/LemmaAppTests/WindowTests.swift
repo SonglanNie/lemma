@@ -53,6 +53,29 @@ final class WindowTests: XCTestCase {
     }
 
     @MainActor
+    func testANewWindowKeepsTheLayoutOfTheWindowItComesFrom() throws {
+        let fixture = try WorkbenchFixture()
+        defer { fixture.close() }
+        let first = fixture.store
+        first.open(fixture.book)
+        first.open(fixture.paper); let paperID = try XCTUnwrap(first.workspace?.id)
+        first.showLibrary = false; first.showStudy = false; first.showPanel = true; first.panelTab = .console
+        first.workbenchLayout.inspectorWidth = 412; first.workbenchLayout.activityBar = false
+        let layout = first.windowSession
+
+        func assertSameLayout(_ store: StudyStore, _ message: String) {
+            XCTAssertEqual(store.showLibrary, layout.showLibrary, message)
+            XCTAssertEqual(store.showStudy, layout.showStudy, message)
+            XCTAssertEqual(store.showPanel, layout.showPanel, message)
+            XCTAssertEqual(store.panelTab, layout.panelTab, message)
+            XCTAssertEqual(store.workbenchLayout, layout.layout, message)
+        }
+        assertSameLayout(first.app.newWindow(), "File › New Window")
+        first.app.moveBookToNewWindow(paperID)
+        assertSameLayout(try XCTUnwrap(first.app.owner(of: paperID)), "A tab dragged out")
+    }
+
+    @MainActor
     func testWindowsAndTheirTabsSurviveRestart() throws {
         let fixture = try WorkbenchFixture()
         defer { fixture.close() }
