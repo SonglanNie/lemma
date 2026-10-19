@@ -239,6 +239,13 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.3: reading, refined", "book", [
+            "Pages sit closer together (8 pt), and Settings › Reading › Gap between pages sets the gap from 0 to 32 pt.",
+            "Drag a reference preview off its line to keep it open in a window of its own; previews open at the page's width.",
+            "Go to keeps your zoom and horizontal position, the box around an equation fits it, and (15) leads to (15a)–(15c).",
+            "Citations like \"and(24a)\" are counted, the notebook panel has a close button, and ⌘F always reaches the find field.",
+            "Thanks to Songlan Nie, Lemma's first contributor, who made all of these while reading with Lemma."
+        ]),
         ("Lemma 3.2.2", "check", [
             "The Dock keeps a single Lemma icon: reading a new book, or quitting and opening Lemma again, no longer adds another one among the recent apps. Thanks to Songlan Nie, who found and fixed it first."
         ]),

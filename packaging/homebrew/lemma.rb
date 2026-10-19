@@ -1,8 +1,8 @@
 # Homebrew cask for Lemma, for a personal tap (github.com/fus3r/homebrew-lemma) until the official cask
 # requirements are met. Update `version` and `sha256` (printed by scripts/make-dmg.sh) for each release.
 cask "lemma" do
-  version "3.2.2"
-  sha256 "f9846bad5303fcfc749cc7c79ea68468649011d8bd95aee7a86d9c553e5c9d16"
+  version "3.3.0"
+  sha256 "d67af73d9b58d36f69c0e4b995b814ec979e445546ac47d891dc53f2bafa4b58"
 
   url "https://github.com/fus3r/lemma/releases/download/v#{version}/Lemma-#{version}.dmg"
   name "Lemma"
