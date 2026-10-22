@@ -22,18 +22,19 @@ arch_flags=()
 swift build -c release $arch_flags
 bin_dir="$(swift build -c release $arch_flags --show-bin-path)"
 bundle_path="$PWD/build/Lemma.app"
-# LemmaIndexer gets a background-only bundle of its own (Info.plist from package-app.py): PDFKit registers it with the
-# window server, and from Contents/MacOS it would register as Lemma and get a second Lemma icon in the Dock.
+# LemmaIndexer runs from a background-only bundle of its own (its Info.plist comes from package-app.py): PDFKit
+# registers the helper with the window server, and from Contents/MacOS it registered as Lemma, so the Dock showed
+# another Lemma for each book the helper read.
 helper_path="$bundle_path/Contents/Helpers/LemmaIndexer.app"
 mkdir -p "$bundle_path/Contents/MacOS" "$bundle_path/Contents/Resources/Chrome Companion" "$helper_path/Contents/MacOS"
-# Replace executables by rename, so a running Lemma, browser host or indexer keeps its own copy.
+# Replace executables by rename, so a running Lemma, browser host or helper keeps its own copy.
 for name in Lemma LemmaBrowserHost; do
   cp "$bin_dir/$name" "$bundle_path/Contents/MacOS/.$name.new"
   mv -f "$bundle_path/Contents/MacOS/.$name.new" "$bundle_path/Contents/MacOS/$name"
 done
 cp "$bin_dir/LemmaIndexer" "$helper_path/Contents/MacOS/.LemmaIndexer.new"
 mv -f "$helper_path/Contents/MacOS/.LemmaIndexer.new" "$helper_path/Contents/MacOS/LemmaIndexer"
-rm -f "$bundle_path/Contents/MacOS/LemmaIndexer"
+rm -f "$bundle_path/Contents/MacOS/LemmaIndexer"   # where Lemma 3.2.1 and earlier kept it
 # Sparkle (in-app updates) in Contents/Frameworks, without the XPC services only a sandboxed app needs.
 framework="$bundle_path/Contents/Frameworks/Sparkle.framework"
 rm -rf "$framework"; mkdir -p "$bundle_path/Contents/Frameworks"

@@ -50,8 +50,8 @@ final class PageIndexer {
     }
 
     /// The helper. The app bundle keeps it in a background-only bundle of its own, Contents/Helpers/LemmaIndexer.app:
-    /// PDFKit registers the helper with the window server, and from Contents/MacOS it would register as Lemma and get
-    /// a Dock icon of its own. A development build has it beside Lemma's executable.
+    /// PDFKit registers the helper with the window server, and from Contents/MacOS it registered as Lemma, so the Dock
+    /// showed another Lemma for each book it read. A development build has it beside Lemma's executable.
     nonisolated static var helperURL: URL? {
         let bundle = Bundle.main.bundleURL
         let url = bundle.pathExtension == "app"

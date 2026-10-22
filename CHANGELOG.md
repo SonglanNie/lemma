@@ -2,6 +2,24 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.3.0 (October 2026)
+
+**Reading, refined by Lemma's first contributor.** Six changes by Songlan Nie, who made them while reading with Lemma:
+
+- **Gap between pages.** Pages are 8 pt apart instead of 32, and **Settings › Reading › Gap between pages** sets the gap from 0 to 32 pt. The reader, the side view and reference previews follow at once, keeping your place.
+- **Reference previews** can be dragged off into a window of their own. They open at the page's width, and neither they nor the side view select the referenced label any more: on a PDF whose text layer is misaligned, the selection covered the wrong glyphs.
+- **Go to** keeps your zoom and horizontal position, and scrolls sideways only when the item would be off screen. The box flashed around an equation fits the equation and its label, and a link to (15) goes to (15a)–(15c) together.
+- **Citations written right after a word**, as in "and(24a)" when a PDF's text layer lost the space, are counted. "f(2)" and "exp(1)" still are not.
+- The **notebook panel** has a close button, in the VS Code-style and the Classic window.
+- **⌘F** puts the cursor in the find field even when the page-number field had it, and Return in the page-number field gives the keyboard back to the page.
+
+Books are read again once after the update, since equation regions and citation counts are computed differently.
+
+## 3.2.2 (October 2026)
+
+**Fixed.**
+- The Dock showed another Lemma icon among its recent apps for each new or changed PDF Lemma read, and after Lemma was quit and opened again: the helper that reads books took on Lemma's identity. It now runs from a background-only bundle of its own. Found and fixed first by Songlan Nie in a fork of Lemma.
+
 ## 3.2.1 (October 2026)
 
 - **Help › Report How Lemma Read This Book…** (also in the command palette) opens GitHub's book report form with the book's title and what Lemma found in it (equations, figures, tables, statements, proofs, bibliography and index entries) already filled in: say what went wrong and submit it from your browser. Nothing is sent before you do.
