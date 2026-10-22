@@ -21,5 +21,7 @@ hdiutil create -volname "Lemma $version" -srcfolder "$staging/Lemma" -ov -format
 if [[ ${LEMMA_SIGN_IDENTITY:-} == "Developer ID Application:"* ]]; then
   codesign --force --timestamp --sign "$LEMMA_SIGN_IDENTITY" "$output"
 fi
+# The same image under a fixed name, for the README's download link (releases/latest/download/Lemma.dmg).
+cp "$output" build/Lemma.dmg
 shasum -a 256 "$output"
-echo "Made $output"
+echo "Made $output (and build/Lemma.dmg)"

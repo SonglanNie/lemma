@@ -5,7 +5,9 @@
 <p align="center"><b>An IDE for reading mathematics.</b><br>
 A free, open-source PDF reader for the Mac that understands textbooks and papers the way an editor understands code.</p>
 
-<p align="center"><a href="https://github.com/fus3r/lemma/releases/latest"><b>Download for macOS</b></a> · macOS 15 or later, Apple silicon and Intel</p>
+<p align="center"><a href="https://github.com/fus3r/lemma/releases/latest/download/Lemma.dmg"><b>Download for macOS</b></a> · macOS 15 or later, Apple silicon and Intel</p>
+
+<p align="center"><sub>Lemma is not notarized yet, so the first time you open it macOS says it cannot verify it: click <b>Done</b>, then <b>System Settings › Privacy &amp; Security › Open Anyway</b>. Only once.</sub></p>
 
 <p align="center"><img src="docs/images/demo.gif" width="900" alt="Lemma reading its sample book: hovering “Theorem 1.3” previews it, clicking opens a peek beside the line, ⌘K asks about a proof with the equations it cites, proofs fold, and a derivation's wrong step is caught as a sign error, then fixed"></p>
 
@@ -35,7 +37,7 @@ Open any mathematics, statistics or computer science PDF. Lemma reads it once, o
 
 ## Install
 
-Download `Lemma-<version>.dmg` from the [latest release](https://github.com/fus3r/lemma/releases/latest), open it and drag Lemma into Applications. Lemma runs on macOS 15 (Sequoia) or later, on Apple silicon and Intel Macs.
+Download [Lemma.dmg](https://github.com/fus3r/lemma/releases/latest/download/Lemma.dmg) (the [latest release](https://github.com/fus3r/lemma/releases/latest) has it under its version's name too), open it and drag Lemma into Applications. Lemma runs on macOS 15 (Sequoia) or later, on Apple silicon and Intel Macs.
 
 This build is not yet notarized by Apple, so the first time you open it macOS says it cannot verify it. Click **Done**, then open **System Settings › Privacy & Security** and click **Open Anyway** next to Lemma (or run `xattr -dr com.apple.quarantine /Applications/Lemma.app`). You only do this once.
 
