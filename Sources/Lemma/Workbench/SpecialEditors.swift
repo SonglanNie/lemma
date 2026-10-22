@@ -239,6 +239,12 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.3.0-fork.1: windows", "multiple-windows", [
+            "Lemma can have several windows, each with its own tabs, panels and layout (File › New Window, ⇧⌘N). A new window takes the side bars, panel and sizes of the window it comes from.",
+            "Drag a book's tab out of its window to open it in a new window there, onto another window's tabs or page to move it into that window, or choose Move Tab to New Window from the tab's menu.",
+            "A book is open in one window at a time: opening it from another window brings its window to the front. Lemma reopens its windows as you left them.",
+            "This fork's build has no Sparkle update feed, so an upstream release never installs over it. Lemma › Check for Updates… reports a newer release of this fork and opens its page."
+        ]),
         ("Lemma 3.3: reading, refined", "book", [
             "Pages sit closer together (8 pt), and Settings › Reading › Gap between pages sets the gap from 0 to 32 pt.",
             "Drag a reference preview off its line to keep it open in a window of its own; previews open at the page's width.",
