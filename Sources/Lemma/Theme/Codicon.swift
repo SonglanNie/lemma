@@ -53,7 +53,7 @@ enum Codicons {
     /// An NSImage of a codicon, for AppKit menus and buttons.
     @MainActor static func image(_ name: String, size: CGFloat = 16, color: NSColor = .labelColor) -> NSImage? {
         guard let glyph = glyph(name), let font = nsFont(size) else {
-            return fallbackSymbol[name].flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: name) }
+            return symbol(name).flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: name) }
         }
         let attributed = NSAttributedString(string: glyph, attributes: [.font: font, .foregroundColor: color])
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
@@ -63,6 +63,12 @@ enum Codicons {
         image.isTemplate = true
         return image
     }
+
+    /// SF Symbols drawn in both styles where Codicons has no equivalent: picture in picture, for floating boxes.
+    static let systemSymbols: Set<String> = ["pip"]
+
+    /// The SF Symbol drawn for a name in the Classic style, or in place of a missing glyph.
+    static func symbol(_ name: String) -> String? { fallbackSymbol[name] ?? (systemSymbols.contains(name) ? name : nil) }
 
     /// SF Symbols that stand in when the font is missing (tests run without the app's resources).
     static let fallbackSymbol: [String: String] = [
@@ -129,7 +135,7 @@ struct Codicon: View {
             Text(glyph).font(.custom(Codicons.fontName, fixedSize: size)).frame(width: size, height: size)
                 .accessibilityHidden(true)
         } else {
-            Image(systemName: Codicons.fallbackSymbol[name] ?? "circle").font(.system(size: size * 0.78)).frame(width: size, height: size)
+            Image(systemName: Codicons.symbol(name) ?? "circle").font(.system(size: size * 0.78)).frame(width: size, height: size)
                 .accessibilityHidden(true)
         }
     }

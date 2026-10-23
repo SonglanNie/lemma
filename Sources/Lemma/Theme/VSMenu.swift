@@ -23,6 +23,12 @@ enum NativeMenu {
     static func make(_ items: [VSMenuItem]) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+        // Gestures (“⌘-drag”) have no key equivalent. A menu with one writes every shortcut after its title instead,
+        // right-aligned where the widest title and shortcut end, so keys and gestures share one column.
+        let font = NSFont.menuFont(ofSize: 0)
+        func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
+        let written = items.contains { $0.shortcut.map { parse($0) == nil } ?? false }
+        let shortcutEnd = (items.map { width($0.title) }.max() ?? 0) + 28 + (items.compactMap(\.shortcut).map(width).max() ?? 0)
         for item in items {
             switch item.kind {
             case .separator: menu.addItem(.separator())
@@ -37,7 +43,10 @@ enum NativeMenu {
                 let entry = ActionMenuItem(item.title) { perform() }
                 entry.state = item.checked ? .on : .off
                 entry.isEnabled = item.enabled
-                if let shortcut = item.shortcut, let parsed = parse(shortcut) { entry.keyEquivalent = parsed.key; entry.keyEquivalentModifierMask = parsed.modifiers }
+                if let shortcut = item.shortcut {
+                    if !written, let parsed = parse(shortcut) { entry.keyEquivalent = parsed.key; entry.keyEquivalentModifierMask = parsed.modifiers }
+                    else { entry.attributedTitle = writtenShortcut(item.title, shortcut: shortcut, at: shortcutEnd, font: font, enabled: item.enabled) }
+                }
                 menu.addItem(entry)
             }
         }
@@ -74,7 +83,17 @@ enum NativeMenu {
         }
     }
 
-    /// “⇧⌘P” → key “p” with shift and command, for display beside the item.
+    /// A title followed by its shortcut in the colour of key equivalents, right-aligned at `end`.
+    private static func writtenShortcut(_ title: String, shortcut: String, at end: CGFloat, font: NSFont, enabled: Bool) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: end)]
+        let text = NSMutableAttributedString(string: title, attributes: [.font: font, .paragraphStyle: paragraph])
+        text.append(NSAttributedString(string: "\t" + shortcut, attributes: [.font: font, .paragraphStyle: paragraph,
+                                                                             .foregroundColor: enabled ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor]))
+        return text
+    }
+
+    /// “⇧⌘P” → key “p” with shift and command, for display beside the item; nil for a gesture such as “⌘-drag”.
     private static func parse(_ shortcut: String) -> (key: String, modifiers: NSEvent.ModifierFlags)? {
         var modifiers: NSEvent.ModifierFlags = []
         var key = ""

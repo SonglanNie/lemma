@@ -309,9 +309,31 @@ struct ClassicBreadcrumbBar: View {
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().accessibilityLabel("Zoom")
             Button(action: store.toggleBookmark) { Image(systemName: store.pageIsBookmarked ? "bookmark.fill" : "bookmark") }
                 .help("Bookmark page · ⌘D").accessibilityLabel("Bookmark current page")
-            Button(action: store.toggleSplit) { Image(systemName: store.split == nil ? "rectangle.split.2x1" : "rectangle.split.2x1.fill") }
-                .help("Split editor: keep another page beside this one · ⌘\\").accessibilityLabel("Split editor")
+            HStack(spacing: 0) {
+                Button(action: store.toggleSplit) { Image(systemName: store.split == nil ? "rectangle.split.2x1" : "rectangle.split.2x1.fill") }
+                    .help("Split editor: keep another page beside this one · ⌘\\").accessibilityLabel("Split editor")
+                ClassicMenuArrow(help: "Open beside the page: this page, the selection or a box") { store.splitMenuItems }
+            }
+            HStack(spacing: 0) {
+                Button { store.drawBox(.float) } label: { Image(systemName: "pip") }
+                    .help("Floating box: draw a box to keep above the page · ⇧⌘-drag").accessibilityLabel("Floating box")
+                ClassicMenuArrow(help: "Floating boxes") { store.floatMenuItems }
+            }
         }.font(.system(size: 12))
+    }
+}
+
+/// The small arrow attached to a toolbar button that opens the button's menu, as a split button's.
+private struct ClassicMenuArrow: View {
+    let help: String
+    let items: () -> [VSMenuItem]
+
+    var body: some View {
+        VSMenu(items: items) {
+            Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold)).foregroundStyle(.secondary)
+                .frame(width: 10, height: 18)
+        }
+        .help(help).accessibilityLabel(help)
     }
 }
 
@@ -322,6 +344,8 @@ struct ClassicStatusBar: View {
     @State private var showingReading = false
 
     private var mode: (label: String, symbol: String, active: Bool) {
+        if store.reader.boxDestination == .side { return ("Box to Side", "rectangle.split.2x1", true) }
+        if store.reader.boxDestination == .float { return ("Floating Box", "pip", true) }
         if store.reader.regionMode { return ("Capture", "viewfinder", true) }
         if store.reader.inkMode { return ("Draw", "pencil.tip", true) }
         if store.focusMode { return ("Focus", "eye", false) }

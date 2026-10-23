@@ -290,6 +290,7 @@ final class StudyStore {
         reader.onLookup = { [weak self] page, region, text in self?.lookupDefinition(text, pageIndex: page, region: region) }
         reader.onReference = { [weak self] mention, page in self?.peekReference(mention, pageIndex: page) }
         reader.onReferenceToSide = { [weak self] mention, page in self?.openReferenceToSide(mention, pageIndex: page) }
+        reader.onBox = { [weak self] destination, page, region in self?.openBox(destination, page: page, region: region) }
         reader.onContextAction = { [weak self] action in self?.perform(action) }
         reader.onShowReferences = { [weak self] key in self?.showReferences(.object(key)) }
         reader.onMarginNote = { [weak self] page, region, quote in self?.addMarginNote(pageIndex: page, region: region, quote: quote) }

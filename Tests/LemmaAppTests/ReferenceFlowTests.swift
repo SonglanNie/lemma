@@ -195,7 +195,60 @@ final class ReferenceFlowTests: XCTestCase {
         let label = peek.convert(target.anchor.rect, from: page)
         XCTAssertTrue(peek.bounds.insetBy(dx: -1, dy: -1).contains(label), "The label \(label) must be visible in the peek \(peek.bounds).")
         XCTAssertEqual(peek.scaleFactor, peek.scaleFactorForSizeToFit, accuracy: 0.001, "The page's width fills the peek, as in the reader.")
+        peek.largestScale = 0.5
+        peek.target = nil; peek.target = target
+        peek.layoutSubtreeIfNeeded(); peek.layout()
+        XCTAssertEqual(peek.scaleFactor, 0.5, accuracy: 0.001, "The page opens no larger than the peek's zoom.")
         XCTAssertTrue(peek.highlightedSelections?.isEmpty ?? true, "Nothing is selected: a misaligned text layer would mark the wrong glyphs.")
+    }
+
+    @MainActor
+    func testPeekOpensJustBelowTheReadersZoomWithinTheWindow() {
+        let roomy = PeekSizing(scale: 1.5, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        XCTAssertEqual(roomy.width(forPage: 612), 612 * 1.5 * PeekSizing.share + PeekSizing.sides, accuracy: 0.5,
+                       "The page opens a little smaller than the reader shows it.")
+        let narrow = PeekSizing(scale: 1.5, opening: CGSize(width: 700, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        XCTAssertEqual(narrow.width(forPage: 612), 700, "Within 70% of the window, the page is fitted rather than cut off.")
+        XCTAssertEqual(narrow.zoom(forPage: 612, width: 700), (700 - PeekSizing.sides) / 612, accuracy: 0.001)
+        let zoomedOut = PeekSizing(scale: 0.6, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        XCTAssertEqual(zoomedOut.width(forPage: 612), 612 * 0.6 * PeekSizing.share + PeekSizing.sides, accuracy: 0.5,
+                       "Read zoomed out, the peek narrows with the page.")
+        let tiny = PeekSizing(scale: 0.2, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        XCTAssertEqual(tiny.width(forPage: 612), PeekSizing.smallest.width)
+        XCTAssertEqual(tiny.zoom(forPage: 612, width: PeekSizing.smallest.width), 0.2 * PeekSizing.share, accuracy: 0.001,
+                       "A page narrower than the peek is centred at the peek's zoom, never enlarged.")
+
+        let start = CGSize(width: 600, height: 300)
+        XCTAssertEqual(roomy.resized(start, by: CGSize(width: 100, height: 50)), CGSize(width: 700, height: 350), "The corner follows the pointer.")
+        let popover = PeekSizing(scale: 1.5, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: true)
+        XCTAssertEqual(popover.resized(start, by: CGSize(width: 100, height: 0)).width, 800, "A centred popover widens on both sides.")
+        XCTAssertEqual(roomy.resized(start, by: CGSize(width: -1000, height: -1000)), PeekSizing.smallest)
+        XCTAssertEqual(roomy.resized(start, by: CGSize(width: 5000, height: 5000)), CGSize(width: 1400, height: 800))
+    }
+
+    @MainActor
+    func testResizedPeekFitsThePageToItsNewWidth() async throws {
+        let fixture = try Fixture()
+        defer { fixture.close() }
+        let index = try XCTUnwrap(fixture.store.references)
+        let resolved = await index.resolve(ReferenceKey(kind: .equation, number: "1.1"), from: 2)
+        let target = try XCTUnwrap(resolved)
+        let peek = PeekPDFView(frame: CGRect(x: 0, y: 0, width: 556, height: 300))
+        peek.displayMode = .singlePageContinuous; peek.autoScales = false
+        peek.document = fixture.store.document
+        let window = NSWindow(contentRect: peek.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = peek
+        defer { window.close() }
+        peek.target = target
+        peek.layoutSubtreeIfNeeded(); peek.layout()
+        let narrow = peek.scaleFactor
+        let page = try XCTUnwrap(fixture.store.document?.page(at: target.pageIndex))
+        window.setContentSize(CGSize(width: 1000, height: 300))
+        peek.layoutSubtreeIfNeeded(); peek.layout()
+        XCTAssertEqual(peek.scaleFactor, peek.scaleFactorForSizeToFit, accuracy: 0.001, "Widened, the page fills the new width.")
+        XCTAssertGreaterThan(peek.scaleFactor, narrow * 1.5)
+        let label = peek.convert(target.anchor.rect, from: page)
+        XCTAssertTrue(peek.bounds.insetBy(dx: -1, dy: -1).intersects(label), "The referenced item stays in view: \(label) in \(peek.bounds).")
     }
 
     @MainActor

@@ -17,6 +17,8 @@ struct ShortcutsSheet: View {
                                         ("Click", "Peek at an underlined reference: “(2.3)”, “Figure 2.1”, “Rudin (1976)”"),
                                         ("⌥-click", "Open a result or a page reference in the side editor"),
                                         ("⌘-click", "Look a term up in the book's index and your glossary"), ("⇧⌘L", "Look up a typed term (for scans)"),
+                                        ("⌘-drag", "Draw a box around a figure, table or passage and open it in the side editor"),
+                                        ("⇧⌘-drag", "Draw a box and float it above the page in a window of its own"),
                                         ("Right-click", "Study actions, Find All References, Open to the Side")]),
         ("Results and proofs", [("⌥⌘[", "Fold every proof (read the statements, try each proof first) · again to unfold"),
                                 ("Gutter ▸", "Fold or unfold one proof beside its first line"),

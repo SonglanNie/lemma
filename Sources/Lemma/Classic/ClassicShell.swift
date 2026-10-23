@@ -131,7 +131,6 @@ struct ClassicShell: View {
             Color.clear.onAppear { columnHeight = geometry.size.height }
                 .onChange(of: geometry.size.height) { _, height in columnHeight = height }
         })
-        .onChange(of: store.sideEditors.isEmpty) { _, _ in store.fitPageIfOverflowing() }
     }
 
     private var selectionBar: some View {
@@ -150,9 +149,16 @@ struct ClassicShell: View {
                 }
                 Spacer(minLength: 0)
                 Button { store.reader.inkMode = false } label: { Image(systemName: "xmark") }.help("Finish drawing")
+            } else if let destination = store.reader.boxDestination {
+                // Drawing a box to open beside the page or float above it is not a selection: its own bar, as drawing on
+                // the page has.
+                Image(systemName: destination == .side ? "rectangle.split.2x1" : "pip").foregroundStyle(Color.lemmaOlive)
+                Text(store.reader.selectionPrompt).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 0)
+                Button { store.reader.regionMode = false } label: { Image(systemName: "xmark") }.help("Stop drawing the box")
             } else {
                 Image(systemName: store.reader.regionMode ? "viewfinder" : "selection.pin.in.out").foregroundStyle(Color.lemmaOlive)
-                Text(store.reader.hasSelection ? (store.reader.regionMode ? "Region selected" : "Text selected") : (store.reader.regionMode ? "Drag around an equation or passage" : "Select text to highlight or annotate")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(store.reader.selectionPrompt).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .layoutPriority(-1)
                 Spacer(minLength: 0)
                 // Labels when they fit, icons when the editor is narrow (for example beside the side editor).

@@ -3,11 +3,26 @@ import PDFKit
 import SwiftUI
 import LemmaCore
 
+/// Where a box drawn on the page opens: in the side editor, or in a floating window of its own.
+enum BoxDestination { case side, float }
+
 @MainActor @Observable
 final class ReaderController {
     weak var view: RegionPDFView?
-    var regionMode = false { didSet { if regionMode { inkMode = false }; view?.cancelInkGesture() } }
-    var inkMode = false { didSet { if inkMode { regionMode = false }; view?.cancelInkGesture() } }
+    var regionMode = false {
+        didSet {
+            if regionMode {
+                inkMode = false
+                // Escape stops drawing only while the page has the keyboard.
+                if let view { view.window?.makeFirstResponder(view) }
+            } else { boxDestination = nil }
+            view?.cancelInkGesture(); view?.refreshPointer()
+        }
+    }
+    /// Where the region being drawn opens, instead of becoming the selection: beside the page or in a floating box
+    /// (Draw a Box… in the split and float buttons' menus).
+    var boxDestination: BoxDestination?
+    var inkMode = false { didSet { if inkMode { regionMode = false }; view?.cancelInkGesture(); view?.refreshPointer() } }
     var inkEraser = false
     var inkColor: InkColor = .graphite
     var inkWidth: Double = 1.5
@@ -99,6 +114,9 @@ final class ReaderController {
     var onReference: ((PageMention, Int) -> Void)?
     /// ⌥-click on a reference: opens it in the side editor instead of peeking at it.
     var onReferenceToSide: ((PageMention, Int) -> Void)?
+    /// A box drawn to open elsewhere: beside the page (⌘-drag) or floating above it (⌘⇧-drag), or a region drawn after
+    /// Draw a Box…: where, page and box.
+    var onBox: ((BoxDestination, Int, CGRect) -> Void)?
     /// Starts a margin note beside a line (double-click in the margin, or the context menu).
     var onMarginNote: ((Int, CGRect, String) -> Void)?
     /// Opens a margin note's editor from its card.
@@ -453,6 +471,18 @@ final class ReaderController {
         appliedInk = visible
         view?.needsDisplay = true
     }
+    /// What the selection bar says about the selection, or what to do next.
+    var selectionPrompt: String {
+        if hasSelection { return regionMode ? "Region selected" : "Text selected" }
+        if regionMode {
+            switch boxDestination {
+            case .side: return "Drag a box to open it beside the page"
+            case .float: return "Drag a box to float it above the page"
+            case nil: return "Drag around an equation or passage"
+            }
+        }
+        return "Select text to highlight or annotate"
+    }
     func updateSelection() {
         defer { view?.updateOverlay() }
         guard let view, let text = view.currentSelection, text.pages.count == 1,
@@ -577,17 +607,25 @@ final class RegionPDFView: PDFView {
     private(set) var hoveredReference: (mention: PageMention, pageIndex: Int)?
     private var referenceTracking: NSTrackingArea?
     private var start: CGPoint?
-    /// The capture rectangle being dragged in region mode, in this view's coordinates.
+    /// Where a ⌘-press began: released in place it looks up the word there, dragged it draws a box that opens to the side,
+    /// or floats above the page when ⇧ is held at the release.
+    private var commandPress: CGPoint?
+    /// The rectangle being dragged in region mode or with ⌘, in this view's coordinates.
     private(set) var dragRectangle: CGRect?
+    /// Drawing a box or handwriting: the pointer stays a crosshair over the whole page, text, references and notes
+    /// included, as in a screenshot, so it is plain that a drag draws rather than selects.
+    var drawsWithCrosshair: Bool { controller?.regionMode == true || controller?.inkMode == true || (commandPress != nil && dragRectangle != nil) }
     private var drawingStroke: InkStroke?
     private lazy var selectionOverlay = RegionSelectionOverlay(frame: bounds)
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let target = super.hitTest(point) else { return nil }
         if target is NSScroller { return target }
-        // PDFKit's page subviews otherwise consume the drag before our handler.
-        if controller?.regionMode == true || controller?.inkMode == true { return self }
         let event = NSApp.currentEvent
+        // PDFKit's page subviews otherwise consume the drag before our handler; scrolling and pinching still move the page.
+        if controller?.regionMode == true || controller?.inkMode == true {
+            return event.map { [.scrollWheel, .magnify, .smartMagnify, .gesture].contains($0.type) } == true ? target : self
+        }
         if event?.modifierFlags.contains(.command) == true { return self }
         // AppKit hit-tests for every scroll-wheel event too; only a click needs the margin, the gutter and the references.
         if let event, ![.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) { return target }
@@ -637,6 +675,13 @@ final class RegionPDFView: PDFView {
     }
 
     override func mouseMoved(with event: NSEvent) {
+        // PDFKit's own handling would show the I-beam over text and the hand over links.
+        if drawsWithCrosshair {
+            updateReferenceHover(nil)
+            updateSymbolHover(nil)
+            NSCursor.crosshair.set()
+            return
+        }
         super.mouseMoved(with: event)
         let point = convert(event.locationInWindow, from: nil)
         let reference = referenceHit(at: point)
@@ -713,7 +758,8 @@ final class RegionPDFView: PDFView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        if referenceHit(at: convert(event.locationInWindow, from: nil)) != nil { NSCursor.pointingHand.set() } else { super.cursorUpdate(with: event) }
+        if drawsWithCrosshair { NSCursor.crosshair.set() }
+        else if referenceHit(at: convert(event.locationInWindow, from: nil)) != nil { NSCursor.pointingHand.set() } else { super.cursorUpdate(with: event) }
     }
 
     private func updateReferenceHover(_ hit: (mention: PageMention, pageIndex: Int)?) {
@@ -730,8 +776,13 @@ final class RegionPDFView: PDFView {
         }
     }
 
-    /// With the ruler on, ↓ ↑ (or J K) step through the lines, Return opens the line's first reference, Escape ends it.
+    /// Escape stops drawing a box or capturing a region, as the bar's × does. With the ruler on, ↓ ↑ (or J K) step
+    /// through the lines, Return opens the line's first reference, Escape ends it.
     override func keyDown(with event: NSEvent) {
+        if let controller, controller.regionMode, event.keyCode == 53, event.modifierFlags.isDisjoint(with: [.command, .control, .option, .shift]) {
+            controller.regionMode = false
+            return
+        }
         guard let controller, controller.rulerMode, event.modifierFlags.isDisjoint(with: [.command, .control, .option]) else { super.keyDown(with: event); return }
         // While a proof is debugged: Return steps into the line's citation, Shift-Return steps out, Escape stops
         // (F11 is often taken by macOS, so the debugger also answers to the keys the ruler already uses).
@@ -772,8 +823,18 @@ final class RegionPDFView: PDFView {
     }
 
     override func resetCursorRects() {
-        if controller?.regionMode == true || controller?.inkMode == true { addCursorRect(bounds, cursor: .crosshair) }
+        if drawsWithCrosshair { addCursorRect(bounds, cursor: .crosshair) }
         else { super.resetCursorRects() }
+    }
+
+    /// Sets the pointer for the mode just entered or left: the cursor rectangles of the notes and reference counts
+    /// over the page change with it, and a pointer already over the page changes at once rather than on its next move.
+    func refreshPointer() {
+        guard let window else { return }
+        window.resetCursorRects()
+        // A QA copy recording in the background leaves the reader's pointer alone.
+        guard !QAHooks.startsInBackground, bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)) else { return }
+        (drawsWithCrosshair ? NSCursor.crosshair : NSCursor.iBeam).set()
     }
 
     private var overlayRefreshScheduled = false
@@ -835,11 +896,8 @@ final class RegionPDFView: PDFView {
             return
         }
         if controller?.regionMode != true, controller?.inkMode != true, event.modifierFlags.contains(.command) {
-            let local = convert(event.locationInWindow, from: nil)
-            guard let page = page(for: local, nearest: false), let document,
-                  let word = page.selectionForWord(at: convert(local, to: page)), let text = word.string,
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            controller?.onLookup?(document.index(for: page), word.bounds(for: page), text)
+            commandPress = convert(event.locationInWindow, from: nil)
+            dragRectangle = nil
             return
         }
         if controller?.regionMode != true, controller?.inkMode != true, event.modifierFlags.isDisjoint(with: [.shift, .control]),
@@ -893,6 +951,15 @@ final class RegionPDFView: PDFView {
             }
             return
         }
+        if let origin = commandPress {
+            let end = convert(event.locationInWindow, from: nil)
+            if dragRectangle != nil || hypot(end.x - origin.x, end.y - origin.y) > 3 {
+                dragRectangle = CGRect(x: min(origin.x, end.x), y: min(origin.y, end.y), width: abs(end.x - origin.x), height: abs(end.y - origin.y))
+                updateOverlay()
+                NSCursor.crosshair.set()
+            }
+            return
+        }
         if controller?.inkMode == true { appendInkPoint(event); return }
         guard controller?.regionMode == true, let start else { super.mouseDragged(with: event); return }
         let end = convert(event.locationInWindow, from: nil)
@@ -900,6 +967,18 @@ final class RegionPDFView: PDFView {
         updateOverlay()
     }
     override func mouseUp(with event: NSEvent) {
+        if let origin = commandPress {
+            commandPress = nil
+            let end = convert(event.locationInWindow, from: nil)
+            if dragRectangle != nil {
+                dragRectangle = nil; updateOverlay()
+                let destination: BoxDestination = event.modifierFlags.contains(.shift) ? .float : .side
+                if let box = pageBox(from: origin, to: end) { controller?.onBox?(destination, box.pageIndex, box.region) }
+            } else {
+                lookUpWord(at: origin)
+            }
+            return
+        }
         // With the ruler on, a click on a line moves the ruler there.
         if let controller, controller.rulerMode, pendingReference == nil, !controller.regionMode, !controller.inkMode, event.clickCount == 1,
            currentSelection?.string?.isEmpty != false {
@@ -923,17 +1002,30 @@ final class RegionPDFView: PDFView {
             if let stroke, stroke.points.count > 1 { controller?.onInk?(stroke) }
             return
         }
-        guard controller?.regionMode == true, let start else { super.mouseUp(with: event); return }
+        guard let controller, controller.regionMode, let start else { super.mouseUp(with: event); return }
         defer { self.start = nil; dragRectangle = nil; updateOverlay() }
-        let end = convert(event.locationInWindow, from: nil)
-        let rectangle = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x-start.x), height: abs(end.y-start.y))
-        guard rectangle.width > 8, rectangle.height > 8,
-              let page = page(for: start, nearest: false), let document else { return }
-        let region = convert(rectangle, to: page).intersection(page.bounds(for: .cropBox))
-        guard !region.isNull, region.width > 2, region.height > 2 else { return }
-        let quote = page.selection(for: region)?.string ?? ""
-        controller?.selection = (document.index(for: page), region, quote)
-        controller?.hasSelection = true
+        guard let box = pageBox(from: start, to: convert(event.locationInWindow, from: nil)) else { return }
+        if let destination = controller.boxDestination {
+            controller.regionMode = false
+            controller.onBox?(destination, box.pageIndex, box.region)
+            return
+        }
+        controller.selection = (box.pageIndex, box.region, box.quote)
+        controller.hasSelection = true
+    }
+
+    /// The box dragged between two points of this view, on the page where the drag began, with the text inside it.
+    private func pageBox(from start: CGPoint, to end: CGPoint) -> (pageIndex: Int, region: CGRect, quote: String)? {
+        guard let box = boxRegion(from: start, to: end), let page = document?.page(at: box.pageIndex) else { return nil }
+        return (box.pageIndex, box.region, page.selection(for: box.region)?.string ?? "")
+    }
+
+    /// ⌘-click: the word under the pointer in the book's index and the reader's glossary.
+    private func lookUpWord(at local: CGPoint) {
+        guard let page = page(for: local, nearest: false), let document,
+              let word = page.selectionForWord(at: convert(local, to: page)), let text = word.string,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        controller?.onLookup?(document.index(for: page), word.bounds(for: page), text)
     }
 
     // MARK: Visual review
@@ -1056,7 +1148,7 @@ final class RegionPDFView: PDFView {
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func mouseDown(with event: NSEvent) { open(key) }
     override func accessibilityPerformPress() -> Bool { open(key); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func resetCursorRects() { if !readerDrawsWithCrosshair { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
 /// A margin card: the note's kind, title and the start of the reader's own words.
@@ -1154,12 +1246,19 @@ final class RegionPDFView: PDFView {
     override var wantsUpdateLayer: Bool { true }
     override func mouseDown(with event: NSEvent) { open() }
     override func accessibilityPerformPress() -> Bool { open(); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func resetCursorRects() { if !readerDrawsWithCrosshair { addCursorRect(bounds, cursor: .pointingHand) } }
 }
 
 /// Runs work at most once per interval, so a value that keeps changing is published regularly and its last state
 /// always arrives. While calls keep coming (a scroll, frame by frame) the work runs inline in the first call after the
 /// interval, in that frame's transaction; when they stop, the latest work runs a moment after the interval's end.
+private extension NSView {
+    /// Whether the reader this view lies over is drawing a box or handwriting, when its pointer stays a crosshair.
+    var readerDrawsWithCrosshair: Bool {
+        sequence(first: self, next: \.superview).lazy.compactMap { $0 as? RegionPDFView }.first?.drawsWithCrosshair == true
+    }
+}
+
 @MainActor
 final class Pacer {
     private let interval: CFTimeInterval
@@ -1354,5 +1453,18 @@ struct PDFReaderSurface: NSViewRepresentable {
             if let scrollObservation { NotificationCenter.default.removeObserver(scrollObservation) }
             observations.removeAll(); scrollObservation = nil
         }
+    }
+}
+
+extension PDFView {
+    /// The box dragged between two points of this view, on the page where the drag began, in page coordinates; nil for a
+    /// drag too small to be meant as a box.
+    func boxRegion(from start: CGPoint, to end: CGPoint) -> (pageIndex: Int, region: CGRect)? {
+        let rectangle = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x - start.x), height: abs(end.y - start.y))
+        guard rectangle.width > 8, rectangle.height > 8,
+              let page = page(for: start, nearest: false), let document else { return nil }
+        let region = convert(rectangle, to: page).intersection(page.bounds(for: .cropBox))
+        guard !region.isNull, region.width > 2, region.height > 2 else { return nil }
+        return (document.index(for: page), region)
     }
 }

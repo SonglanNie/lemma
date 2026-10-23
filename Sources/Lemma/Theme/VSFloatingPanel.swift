@@ -28,7 +28,8 @@ final class VSFloatingPanel {
     /// once, for a widget the reader types into first (Ask). A widget whose content changes height (`resizable`) sets
     /// it through `fit(height:)`: SwiftUI would otherwise size the panel itself, from content it measures unbounded.
     func show<Content: View>(_ content: Content, anchor: CGRect, in view: NSView, placement: Placement, interactive: Bool,
-                             width: CGFloat? = nil, maxHeight: CGFloat = 560, takesKeyboard: Bool = false, resizable: Bool = false) {
+                             width: CGFloat? = nil, maxWidth: CGFloat = 760, maxHeight: CGFloat = 560, takesKeyboard: Bool = false,
+                             resizable: Bool = false) {
         close(notify: false)
         guard let window = view.window else { return }
         let root = content.environment(\.theme, ThemeManager.shared.colors)
@@ -36,7 +37,7 @@ final class VSFloatingPanel {
         if resizable { hosting.sizingOptions = [] }
         if let width { hosting.frame.size.width = width }
         let fitting = hosting.fittingSize
-        let size = CGSize(width: width ?? min(fitting.width, 760), height: min(fitting.height, maxHeight))
+        let size = CGSize(width: width ?? min(fitting.width, maxWidth), height: min(fitting.height, maxHeight))
         let anchorOnScreen = window.convertToScreen(view.convert(anchor, to: nil))
         let screen = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
         // Widgets stay inside the window, as VS Code's do (and on its screen); one that cannot fit below its line goes above.
@@ -104,9 +105,15 @@ final class VSFloatingPanel {
 
     /// Gives the widget its content's new height (a list that finished loading, a field that grew) and places it again.
     func fit(height: CGFloat) {
-        guard let panel, let layout, height > 0 else { return }
-        let size = CGSize(width: panel.frame.width, height: min(height, layout.maxHeight))
-        guard abs(size.height - panel.frame.height) > 0.5 else { return }
+        guard let panel else { return }
+        fit(CGSize(width: panel.frame.width, height: height))
+    }
+
+    /// Gives the widget its content's new size, as when the reader resizes a peek from its corner, and places it again.
+    func fit(_ size: CGSize) {
+        guard let panel, let layout, size.width > 0, size.height > 0 else { return }
+        let size = CGSize(width: size.width, height: min(size.height, layout.maxHeight))
+        guard abs(size.height - panel.frame.height) > 0.5 || abs(size.width - panel.frame.width) > 0.5 else { return }
         let origin = Self.origin(for: size, anchor: layout.anchor, area: layout.area, placement: layout.placement)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.contentView?.frame = NSRect(origin: .zero, size: size)
