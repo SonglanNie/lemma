@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import LemmaCore
 import Observation
 
@@ -20,6 +21,8 @@ final class AppModel {
     @ObservationIgnored let lab: LabRuntime
     let downloads = PDFDownloads()
     @ObservationIgnored let libraryGlossary = LibraryGlossary()
+    /// Boxes of pages floating above the windows.
+    @ObservationIgnored lazy var floatingBoxes = FloatingBoxes(app: self)
     @ObservationIgnored lazy var librarySearch = LibraryTextSearch(cacheFolder: repository.root.appendingPathComponent("Indexes"))
     var library: [StudyWorkspace] = []
     var projects: [ResearchProject] = []
@@ -127,6 +130,7 @@ final class AppModel {
             store.windowFrame = record.frame
             store.restore()
         }
+        floatingBoxes.restore()
         restoring = false
         AppLifecycle.shared.attach(self)
     }
@@ -244,6 +248,20 @@ final class AppModel {
             try data.write(to: manifestURL, options: .atomic)
             lastManifestData = data
         } catch { front.error = "Could not save the windows: \(error.localizedDescription)" }
+    }
+
+    /// A library book's PDF read for a view beside the book in front (a side editor, a floating box): drawn in the page
+    /// theme, and unlocked with the password given in this session, if any; a locked PDF otherwise shows no pages.
+    func libraryDocument(_ book: StudyWorkspace) -> PDFDocument? {
+        var url = URL(fileURLWithPath: book.sourcePath)
+        if let bookmark = book.sourceBookmark {
+            var stale = false
+            if let resolved = try? URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale) { url = resolved }
+        }
+        guard let loaded = PDFDocument(url: url) else { return nil }
+        if loaded.isLocked, let password = passwords[book.fingerprint] { loaded.unlock(withPassword: password) }
+        loaded.delegate = ThemedPageProvider.shared
+        return loaded
     }
 
     /// Source changes update the editing window before saving, preserving any unsaved notes there.

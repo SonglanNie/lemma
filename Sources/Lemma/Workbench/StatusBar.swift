@@ -314,6 +314,8 @@ private struct ModeIndicator: View {
 
     private var mode: (String, String) {
         if store.debug != nil { return ("debug-alt", "Debugging") }
+        if store.reader.boxDestination == .side { return ("split-horizontal", "Box to Side") }
+        if store.reader.boxDestination == .float { return ("pip", "Floating Box") }
         if store.reader.regionMode { return ("inspect", "Capture") }
         if store.reader.inkMode { return ("edit", store.reader.drawingTool.label) }
         if store.reader.rulerMode { return ("symbol-ruler", "Ruler") }

@@ -25,7 +25,6 @@ extension StudyStore {
     func openDerivation(_ id: UUID) {
         if focusMode { toggleFocus() }
         openDerivationID = id
-        fitPageIfOverflowing()
         if derivationReports[id] == nil { checkDerivation(id, delay: 0) }
     }
 

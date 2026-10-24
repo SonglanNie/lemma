@@ -219,7 +219,6 @@ extension StudyStore {
             if openLabID == nil, let notebook = workspace?.labs.first { openLabNotebook(notebook.id) }
         }
         saveWorkbench()
-        fitPageIfOverflowing()
     }
 }
 

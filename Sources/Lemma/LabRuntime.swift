@@ -321,7 +321,6 @@ extension StudyStore {
     func openLabNotebook(_ id: UUID) {
         if focusMode { toggleFocus() }
         openLabID = id
-        fitPageIfOverflowing()
         Task { await discoverPython() }
     }
 

@@ -84,15 +84,15 @@ private struct WorkbenchPaneDivider: View {
         VSSash(axis: .vertical, onDrag: { delta in
                 if draggingWidth == nil { onStart() }
                 draggingWidth = resize((draggingWidth ?? displayedWidth) + delta * (onLeft ? 1 : -1))
-            }, onEnd: { draggingWidth = nil; store.saveWorkbench(); store.fitPageIfOverflowing() }, onDoubleClick: {
-                onStart(); resize(pane == .sidebar ? 264 : 370); store.saveWorkbench(); store.fitPageIfOverflowing()
+            }, onEnd: { draggingWidth = nil; store.saveWorkbench() }, onDoubleClick: {
+                onStart(); resize(pane == .sidebar ? 264 : 370); store.saveWorkbench()
             })
             .frame(maxHeight: .infinity)
             .accessibilityElement()
             .accessibilityLabel(pane == .sidebar ? "Explorer width" : "Notebook inspector width")
             .accessibilityValue("\(Int(displayedWidth)) points")
             .accessibilityAdjustableAction { direction in
-                onStart(); resize(displayedWidth + (direction == .increment ? 20 : -20)); store.saveWorkbench(); store.fitPageIfOverflowing()
+                onStart(); resize(displayedWidth + (direction == .increment ? 20 : -20)); store.saveWorkbench()
             }
             .help("Drag to resize; double-click to reset width")
     }
