@@ -14,6 +14,8 @@ enum ReaderContextAction {
     case highlight(HighlightColor, ReaderSelection)
     case underline(ReaderSelection)
     case pinSelection(ReaderSelection)
+    case selectionToSide(ReaderSelection)
+    case drawBox(BoxDestination)
     case lookUp(String, Int, CGRect)
     case bookmark
     case marginNote(Int, CGRect, String)
@@ -75,6 +77,7 @@ extension RegionPDFView {
             items.append(highlight)
             items.append(ActionMenuItem("Underline Selection") { perform(.underline(captured)) })
             items.append(ActionMenuItem("Pin Selection") { perform(.pinSelection(captured)) })
+            items.append(ActionMenuItem("Open Selection to the Side") { perform(.selectionToSide(captured)) })
             items.append(ActionMenuItem("Work Through as a Derivation…") { perform(.derive(captured)) })
             let term = captured.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !term.isEmpty, term.count <= 40 { items.append(ActionMenuItem("Look Up “\(term)”") { perform(.lookUp(term, captured.pageIndex, captured.region)) }) }
@@ -90,6 +93,7 @@ extension RegionPDFView {
             items.append(ActionMenuItem("Toggle Breakpoint on This Line") { perform(.breakpoint(line.pageIndex, pagePoint)) })
             items.append(ActionMenuItem("Run and Debug from Here") { perform(.debugHere(line.pageIndex, pagePoint)) })
         }
+        if captured == nil { items.append(ActionMenuItem("Draw a Box to the Side…") { perform(.drawBox(.side)) }) }
         items.append(ActionMenuItem("Bookmark Page") { perform(.bookmark) })
         items.append(.separator())
         for (offset, item) in items.enumerated() { menu.insertItem(item, at: offset) }
@@ -126,6 +130,8 @@ extension StudyStore {
         case let .highlight(color, selection): restore(selection); highlightSelection(color: color)
         case let .underline(selection): restore(selection); highlightSelection(style: .underline)
         case let .pinSelection(selection): restore(selection); pinSelection()
+        case let .selectionToSide(selection): openToSide(page: selection.pageIndex, region: selection.region)
+        case let .drawBox(destination): drawBox(destination)
         case let .lookUp(text, page, rect): lookupDefinition(text, pageIndex: page, region: rect)
         case .bookmark: toggleBookmark()
         case let .marginNote(page, region, quote): addMarginNote(pageIndex: page, region: region, quote: quote)

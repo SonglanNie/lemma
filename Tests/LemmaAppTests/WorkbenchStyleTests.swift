@@ -277,6 +277,10 @@ final class WorkbenchStyleTests: XCTestCase {
             XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), "\(codicon) → \(symbol) is an SF Symbol")
             if Codicons.isAvailable { XCTAssertNotNil(Codicons.mapping[codicon], "\(codicon) is a codicon") }
         }
+        for symbol in Codicons.systemSymbols {
+            XCTAssertNotNil(NSImage(systemSymbolName: symbol, accessibilityDescription: nil), "\(symbol) is an SF Symbol")
+            XCTAssertNil(Codicons.mapping[symbol], "\(symbol) has no codicon, or the codicon would be drawn")
+        }
     }
 
     @MainActor

@@ -87,6 +87,7 @@ struct SecondaryPDFSurface: NSViewRepresentable {
         view.document = document
         view.pageThemeRevision = pageThemeRevision
         view.show(state)
+        floatBoxes(from: view)
         context.coordinator.observe(view)
         view.onLayout = { [weak coordinator = context.coordinator, weak view] in
             guard let view else { return }
@@ -109,6 +110,15 @@ struct SecondaryPDFSurface: NSViewRepresentable {
             // The place reached in the side tab being left is written before the view shows the next one.
             context.coordinator.flushPendingSave(view)
             view.show(state)
+        }
+        floatBoxes(from: view)
+    }
+
+    /// ⇧⌘-drag on the side page floats a box of it, of the book this side tab shows.
+    private func floatBoxes(from view: SecondaryPDFView) {
+        view.onFloatBox = { [weak store, weak view, state] pageIndex, region in
+            guard let view else { return }
+            store?.floatBox(from: state, page: pageIndex, region: region, drawnIn: view)
         }
     }
 
@@ -221,6 +231,53 @@ final class SecondaryPDFView: PDFView {
     }
     var shownID: UUID?
     var pageThemeRevision = 0
+    /// A box drawn with ⇧⌘, as in the main editor, floats above the page: (page index, region in page coordinates).
+    /// ⌘-drag alone draws nothing here, since the side editor does not open boxes beside itself.
+    var onFloatBox: ((Int, CGRect) -> Void)?
+    /// Where a ⌘-drag began, in this view's coordinates.
+    private var boxStart: CGPoint?
+    /// The box being dragged, outlined as in the main editor.
+    private(set) lazy var boxOutline: NSView = {
+        let outline = NSView()
+        outline.wantsLayer = true
+        outline.layer?.borderWidth = 2
+        outline.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        outline.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.13).cgColor
+        return outline
+    }()
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let target = super.hitTest(point) else { return nil }
+        // PDFKit's page views would otherwise take a ⌘-drag as a text selection.
+        if onFloatBox != nil, !(target is NSScroller), let event = NSApp.currentEvent, event.type == .leftMouseDown,
+           event.modifierFlags.contains(.command) { return self }
+        return target
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard onFloatBox != nil, event.modifierFlags.contains(.command) else { super.mouseDown(with: event); return }
+        boxStart = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start = boxStart else { super.mouseDragged(with: event); return }
+        let end = convert(event.locationInWindow, from: nil)
+        guard boxOutline.superview != nil || hypot(end.x - start.x, end.y - start.y) > 3 else { return }
+        if boxOutline.superview == nil { addSubview(boxOutline) }
+        boxOutline.frame = CGRect(x: min(start.x, end.x), y: min(start.y, end.y), width: abs(end.x - start.x), height: abs(end.y - start.y))
+        NSCursor.crosshair.set()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let start = boxStart else { super.mouseUp(with: event); return }
+        boxStart = nil
+        let drawn = boxOutline.superview != nil
+        boxOutline.removeFromSuperview()
+        // ⇧ held at the release floats the box, as in the main editor.
+        guard drawn, event.modifierFlags.contains(.shift),
+              let box = boxRegion(from: start, to: convert(event.locationInWindow, from: nil)) else { return }
+        onFloatBox?(box.pageIndex, box.region)
+    }
     private var pending: SplitEditorState?
     var onLayout: (() -> Void)?
     private(set) var isShowingPage = false
@@ -238,17 +295,34 @@ final class SecondaryPDFView: PDFView {
         guard let state = pending, bounds.width > 40, let page = document?.page(at: state.pageIndex) else { return }
         pending = nil
         autoScales = false
-        let width = page.displayedSize.width
-        scaleFactor = max(minScaleFactor, min(maxScaleFactor, state.scale.map { CGFloat($0) } ?? (bounds.width - 24) / max(width, 1)))
+        let region = state.region?.rect
+        let text = Self.textBox(of: page)
+        // A box opened to the side fills the view, up to 400 % for a few words. A page fits its text, not its paper: with
+        // the blank margins a page is small in a side view beside the reader.
+        let fitted = region.map { min((bounds.width - 24) / max($0.width, 1), (bounds.height - 24) / max($0.height, 1), 4) } ?? (bounds.width - 24) / max(text.width, 1)
+        scaleFactor = max(minScaleFactor, min(maxScaleFactor, state.scale.map { CGFloat($0) } ?? fitted))
         layoutDocumentView()
+        let left = text.minX - 12 / scaleFactor
         if let x = state.positionX, let y = state.positionY {
             go(to: PDFDestination(page: page, at: CGPoint(x: x, y: y)))
+        } else if let region {
+            // The box in the middle of the view, with the page around it still there to scroll to.
+            let visible = CGSize(width: bounds.width / scaleFactor, height: bounds.height / scaleFactor)
+            go(to: PDFDestination(page: page, at: CGPoint(x: region.midX - visible.width / 2, y: region.midY + visible.height / 2)))
         } else if let target = state.target {
-            let region = target.region.rect
-            go(to: PDFDestination(page: page, at: CGPoint(x: region.minX, y: min(region.maxY + 40, page.bounds(for: .cropBox).maxY))))
+            go(to: PDFDestination(page: page, at: CGPoint(x: left, y: min(target.region.rect.maxY + 40, page.bounds(for: .cropBox).maxY))))
         } else {
-            go(to: page)
+            go(to: PDFDestination(page: page, at: CGPoint(x: left, y: page.bounds(for: .cropBox).maxY)))
         }
         isShowingPage = true
+    }
+
+    /// The part of the page that holds its text, headers and page numbers included; the whole page when it has little
+    /// or no text (a scan, a full-page figure).
+    static func textBox(of page: PDFPage) -> CGRect {
+        let paper = page.bounds(for: .cropBox)
+        guard let text = page.selection(for: paper)?.bounds(for: page).intersection(paper),
+              !text.isNull, text.width > paper.width * 0.4 else { return paper }
+        return text
     }
 }

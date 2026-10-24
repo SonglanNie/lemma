@@ -96,9 +96,12 @@ final class DefinitionLookupTests: XCTestCase {
         let sourcePage = try XCTUnwrap(document.page(at: 1))
         let wordBounds = try XCTUnwrap(sourcePage.selection(for: NSRange(location: 0, length: 1))).bounds(for: sourcePage)
         let point = view.convert(CGPoint(x: wordBounds.midX, y: wordBounds.midY), from: sourcePage)
-        let commandClick = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: view.convert(point, to: nil),
-            modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
-        view.mouseDown(with: commandClick)
+        func commandClick(_ type: NSEvent.EventType) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.mouseEvent(with: type, location: view.convert(point, to: nil),
+                modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        }
+        view.mouseDown(with: try commandClick(.leftMouseDown))
+        view.mouseUp(with: try commandClick(.leftMouseUp))
         XCTAssertEqual(store.definitionLookup?.query, "X")
         XCTAssertEqual(store.definitionLookup?.pageIndex, 1)
         XCTAssertTrue(store.focusMode); XCTAssertFalse(store.showStudy); XCTAssertFalse(store.showLibrary)

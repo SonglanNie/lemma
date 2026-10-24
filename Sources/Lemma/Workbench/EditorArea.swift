@@ -176,6 +176,25 @@ struct MainEditorTabs: View {
     }
 }
 
+/// The small arrow attached to an action that opens the action's menu, as a split button's.
+private struct MenuArrow: View {
+    @Environment(\.theme) private var theme
+    let help: String
+    let items: () -> [VSMenuItem]
+    @State private var hovering = false
+
+    var body: some View {
+        VSMenu(items: items) {
+            Codicon("chevron-down", size: 10).foregroundStyle(theme[.iconForeground])
+                .frame(width: 12, height: 22)
+                .background(RoundedRectangle(cornerRadius: 4).fill(hovering ? theme[.toolbarHoverBackground] : .clear))
+        }
+        .onHover { hovering = $0 }
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
 /// The editor's actions at the end of the tab bar, as VS Code puts Run, Split and More there.
 struct EditorActions: View {
     @Bindable var store: StudyStore
@@ -191,7 +210,14 @@ struct EditorActions: View {
                 VSIconButton(icon: "inspect", help: "Capture a Region (⇧⌘S)", toggled: store.reader.regionMode) { store.reader.regionMode.toggle() }
                 VSIconButton(icon: "edit", help: "Draw on My Edition (⌥⇧⌘D)", toggled: store.reader.inkMode) { store.reader.inkMode.toggle() }
                 VSIconButton(icon: "symbol-ruler", help: "Reading Ruler: one line at a time (⌥⌘R)", toggled: store.reader.rulerMode) { store.reader.rulerMode.toggle() }
-                VSIconButton(icon: "split-horizontal", help: "Split Editor: another page beside this one (⌘\\)") { store.toggleSplit() }
+                HStack(spacing: 0) {
+                    VSIconButton(icon: "split-horizontal", help: "Split Editor: another page beside this one (⌘\\)") { store.toggleSplit() }
+                    MenuArrow(help: "Open Beside the Page: This Page, the Selection or a Box") { store.splitMenuItems }
+                }
+                HStack(spacing: 0) {
+                    VSIconButton(icon: "pip", help: "Floating Box: draw a box to keep above the page (⇧⌘-drag)") { store.drawBox(.float) }
+                    MenuArrow(help: "Floating Boxes") { store.floatMenuItems }
+                }
                 moreMenu
             } else if store.activeSpecial != nil {
                 VSIconButton(icon: "split-horizontal", help: "Split Editor", enabled: false) {}

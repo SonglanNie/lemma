@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import SwiftUI
 import LemmaCore
 import Observation
@@ -24,6 +25,8 @@ final class AppModel {
     let downloads = PDFDownloads()
     /// Terms and index entries of the books in the library, for Look Up across books.
     @ObservationIgnored let libraryGlossary = LibraryGlossary()
+    /// Boxes of pages floating above the windows.
+    @ObservationIgnored lazy var floatingBoxes = FloatingBoxes(app: self)
     /// Full-text search across the library (the VS Code style's Search view).
     @ObservationIgnored lazy var librarySearch = LibraryTextSearch(cacheFolder: repository.root.appendingPathComponent("Indexes", isDirectory: true))
 
@@ -292,6 +295,7 @@ final class AppModel {
         }
         front.restore(saved.first, first: true)
         for window in saved.dropFirst() { waitingStore(StudyStore(app: self, id: window.id)).restore(window, first: false) }
+        floatingBoxes.restore(session.floatingBoxes, hidden: session.floatingBoxesHidden)
         restoring = false
         saveSession()
         if let message = startupError { startupError = nil; front.notify(message, severity: .error) }
@@ -306,6 +310,7 @@ final class AppModel {
         // Editors of books no window holds are let go with the books.
         let open = Set(session.windows.flatMap(\.bookIDs))
         session.books = session.books.filter { open.contains($0.key) }
+        session.floatingBoxes = floatingBoxes.boxes; session.floatingBoxesHidden = floatingBoxes.hidden
         do {
             let data = try sessionEncoder.encode(session)
             guard data != lastSessionData else { return }
@@ -339,6 +344,20 @@ final class AppModel {
     }
 
     // MARK: Library
+
+    /// A library book's PDF read for a view beside the book in front (a side editor, a floating box): drawn in the page
+    /// theme, and unlocked with the password given in this session, if any; a locked PDF otherwise shows no pages.
+    func libraryDocument(_ book: StudyWorkspace) -> PDFDocument? {
+        var url = URL(fileURLWithPath: book.sourcePath)
+        if let bookmark = book.sourceBookmark {
+            var stale = false
+            if let resolved = try? URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale) { url = resolved }
+        }
+        guard let loaded = PDFDocument(url: url) else { return nil }
+        if loaded.isLocked, let password = passwords[book.fingerprint] { loaded.unlock(withPassword: password) }
+        loaded.delegate = ThemedPageProvider.shared
+        return loaded
+    }
 
     /// Relinks just the source fields; the windows' PDFs, notes, selection and reading position stay in place.
     func relinkSources(_ sources: [String: LibrarySourceResolution]) {

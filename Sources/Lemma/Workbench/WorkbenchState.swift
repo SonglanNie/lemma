@@ -168,17 +168,8 @@ extension StudyStore {
     func sideDocument(for state: SplitEditorState) -> PDFDocument? {
         guard let id = state.bookID, id != workspace?.id else { return document }
         if let open = documents[id] ?? sideDocuments[id] { return open }
-        guard let book = library.first(where: { $0.id == id }) else { return nil }
-        var url = URL(fileURLWithPath: book.sourcePath)
-        if let bookmark = book.sourceBookmark {
-            var stale = false
-            if let resolved = try? URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale) { url = resolved }
-        }
-        guard let loaded = PDFDocument(url: url) else { return nil }
-        // A locked PDF opens with the password given in this session, if any; otherwise it shows no pages.
-        if loaded.isLocked, let password = app.passwords[book.fingerprint] { loaded.unlock(withPassword: password) }
-        // Drawn with the page theme (Sepia, Night) like the book in front.
-        loaded.delegate = ThemedPageProvider.shared
+        guard let book = library.first(where: { $0.id == id }),
+              let loaded = app.libraryDocument(book) else { return nil }
         sideDocuments[id] = loaded
         return loaded
     }
