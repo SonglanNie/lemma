@@ -174,6 +174,10 @@ extension StudyStore {
             "studySection": studySection.rawValue, "status": status, "notes": workspace?.notes.count ?? 0
         ]
         state["workspace"] = workspace?.title
+        // The pointer on screen, told apart from the standard ones by its hot spot and size.
+        let shown = NSCursor.currentSystem
+        state["cursor"] = [(NSCursor.crosshair, "crosshair"), (.iBeam, "iBeam"), (.pointingHand, "pointingHand"), (.arrow, "arrow")]
+            .first { $0.0.hotSpot == shown?.hotSpot && $0.0.image.size == shown?.image.size }?.1 ?? "other"
         state["layout"] = workspace?.reading.layout?.rawValue
         state["displayMode"] = reader.view?.displayMode.rawValue
         state["libraries"] = libraries.collections.map { collection in
@@ -205,6 +209,8 @@ extension StudyStore {
         state["navigator"] = navigatorSection.rawValue
         state["panel"] = showPanel ? panelTab.rawValue : nil
         state["split"] = split?.title
+        state["floatingBoxes"] = app.floatingBoxes.boxes.map { ["title": $0.title, "zoom": $0.zoom, "frame": [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height]] }
+        state["floatingHidden"] = app.floatingBoxes.hidden
         state["breadcrumb"] = breadcrumb().map(\.title)
         state["printedPage"] = printedLabel(for: reader.pageNumber - 1)
         state["analysis"] = analysis?.analysis.map { ["definitions": $0.definitions.count, "index": $0.index.count, "bibliography": $0.bibliography.count, "citations": $0.citations.count] }
@@ -312,6 +318,33 @@ extension StudyStore {
             guard let item = items.first else { throw QAHooks.QAError.missing("result for \(info["query"] ?? "")") }
             if info["side"] == "1", let side = item.openToSide { side() } else { item.perform() }
         case "split": toggleSplit()
+        case "selectionToSide": openSelectionToSide()
+        case "boxToSide": drawBox(.side)
+        case "floatBox":
+            // Floats a box of the current page given in page points (x, y, w, h), as a ⇧⌘-drag would.
+            let x = Double(info["x"] ?? "") ?? 72, y = Double(info["y"] ?? "") ?? 400, w = Double(info["w"] ?? "") ?? 200, h = Double(info["h"] ?? "") ?? 80
+            floatBox(page: reader.pageNumber - 1, region: CGRect(x: x, y: y, width: w, height: h))
+        case "floatingResize", "floatingZoom":
+            // The last box's window resized to w (its proportions kept), or zoomed by factor (0: back to the box).
+            guard let box = app.floatingBoxes.boxes.last, let panel = app.floatingBoxes.panels[box.id] else { throw QAHooks.QAError.missing("floating box") }
+            if action == "floatingZoom" { panel.boxView.zoom(by: CGFloat(Double(info["factor"] ?? "") ?? 1.25)); break }
+            let width = CGFloat(Double(info["w"] ?? "") ?? 500), content = panel.contentRect(forFrameRect: panel.frame)
+            panel.setFrame(panel.frameRect(forContentRect: CGRect(x: content.minX, y: content.maxY - width * content.height / content.width,
+                                                                  width: width, height: width * content.height / content.width)), display: true)
+        case "toolbarMenu":
+            // The split (value=split) or float button's menu, open for hold= milliseconds (600) and a snapshot named
+            // <name>-menu, then closed.
+            guard let view = reader.view else { throw QAHooks.QAError.missing("reader") }
+            let menu = NativeMenu.make(info["value"] == "float" ? floatMenuItems : splitMenuItems)
+            let name = info["name"] ?? "toolbarMenu"
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(Int(info["hold"] ?? "") ?? 600))
+                try? await QAHooks.shared?.snapshot(to: QAHooks.shared!.directory.appendingPathComponent("\(name)-menu.png"))
+                menu.cancelTracking()
+            }
+            menu.popUp(positioning: nil, at: CGPoint(x: view.bounds.midX, y: view.bounds.midY), in: view)
+        case "floatingHidden": app.floatingBoxes.setHidden(info["value"] != "0")
+        case "floatingCloseAll": app.floatingBoxes.closeAll()
         case "references":
             let key = ReferenceKey(kind: info["kind"].flatMap(ReferenceKind.init(rawValue:)) ?? .equation, number: info["number"] ?? "")
             showReferences(.object(key))

@@ -625,14 +625,13 @@ final class RegionSelectionOverlay: NSView {
         }
     }
 
-    /// The capture outline: while dragging in region mode, then the captured region on its page (any visible page).
+    /// The capture outline: while dragging a box (in region mode or with ⌘), then the captured region on its page
+    /// (any visible page).
     private func updateRegion(in view: RegionPDFView, controller: ReaderController, document: PDFDocument) {
         var outline: CGRect?
-        if controller.regionMode {
-            if let drag = view.dragRectangle { outline = drag }
-            else if let (index, rect, _) = controller.selection, visibleIndexes.contains(index), let page = document.page(at: index) {
-                outline = view.convert(rect, from: page)
-            }
+        if let drag = view.dragRectangle { outline = drag }
+        else if controller.regionMode, let (index, rect, _) = controller.selection, visibleIndexes.contains(index), let page = document.page(at: index) {
+            outline = view.convert(rect, from: page)
         }
         rectangle = outline
         region.path = outline.map { CGPath(rect: $0.offsetBy(dx: bounds.minX, dy: bounds.minY), transform: nil) }

@@ -22,7 +22,6 @@ extension StudyStore {
         selectedProjectID = id
         if focusMode { toggleFocus() }
         showSideEditor(.project(id))
-        fitPageIfOverflowing()
     }
 
     func addBookToProject(_ bookID: String, projectID: UUID) {

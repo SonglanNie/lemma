@@ -97,6 +97,12 @@ extension StudyStore {
         add("View: Toggle Secondary Side Bar", "sidebar.right", "⌥⌘B", when: book) { [self] in toggleStudy() }
         add("View: Toggle Panel", "rectangle.bottomthird.inset.filled", "⌘J", when: book) { [self] in togglePanel() }
         add("View: Split Editor", "rectangle.split.2x1", "⌘\\", when: book) { [self] in toggleSplit() }
+        add("View: Open Selection to the Side", "rectangle.split.2x1", when: selected) { [self] in openSelectionToSide() }
+        add("View: Draw a Box to the Side…", "rectangle.split.2x1", "⌘-drag", when: book) { [self] in drawBox(.side) }
+        add("View: Draw a Floating Box…", "pip", "⇧⌘-drag", when: book) { [self] in drawBox(.float) }
+        let floating = app.floatingBoxes
+        add(floating.hidden ? "View: Show Floating Boxes" : "View: Hide Floating Boxes", "pip", when: !floating.boxes.isEmpty) { floating.setHidden(!floating.hidden) }
+        add("View: Close All Floating Boxes", "xmark", when: !floating.boxes.isEmpty) { floating.closeAll() }
         for section in NavigatorSection.allCases {
             add("View: Show \(section.title)", section.symbol) { [self] in reveal(section) }
         }

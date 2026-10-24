@@ -182,7 +182,6 @@ struct ReaderWindow: View {
                 }
             }
         }
-        .onChange(of: store.sideEditors.isEmpty) { _, _ in store.fitPageIfOverflowing() }
     }
 
     private var readingBook: Bool { store.activeSpecial == nil && store.document != nil && store.workspace != nil }
@@ -251,9 +250,16 @@ struct ReaderWindow: View {
                 }
                 Spacer(minLength: 0)
                 VSIconButton(icon: "close", help: "Finish Drawing") { store.reader.inkMode = false }
+            } else if let destination = store.reader.boxDestination {
+                // Drawing a box to open beside the page or float above it is not a selection: its own bar, as drawing on
+                // the page has.
+                Codicon(destination == .side ? "split-horizontal" : "pip", size: 16).foregroundStyle(theme.accent)
+                Text(store.reader.selectionPrompt).font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).lineLimit(1)
+                Spacer(minLength: 0)
+                VSIconButton(icon: "close", help: "Stop Drawing the Box") { store.reader.regionMode = false }
             } else {
                 Codicon(store.reader.regionMode ? "inspect" : "selection", size: 16).foregroundStyle(theme.accent)
-                Text(store.reader.hasSelection ? (store.reader.regionMode ? "Region selected" : "Text selected") : (store.reader.regionMode ? "Drag around an equation or passage" : "Select text to highlight or annotate")).font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).lineLimit(1)
+                Text(store.reader.selectionPrompt).font(.ui(12)).foregroundStyle(theme[.descriptionForeground]).lineLimit(1)
                     .layoutPriority(-1)
                 Spacer(minLength: 0)
                 ViewThatFits(in: .horizontal) {

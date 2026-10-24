@@ -31,6 +31,14 @@ final class IDETests: XCTestCase {
         XCTAssertEqual(store.sideEditors.filter { if case .map = $0 { true } else { false } }.count, 1, "One map at a time.")
         store.closeSideEditor("map")
         XCTAssertEqual(store.openDerivationID, derivation, "Closing a tab shows its neighbour.")
+        let figure = CGRect(x: 40, y: 200, width: 220, height: 120)
+        store.openToSide(page: 1, region: figure)
+        store.openToSide(page: 1, region: figure.offsetBy(dx: 0, dy: -150))
+        XCTAssertEqual(store.sideEditors.count, 5, "Two boxes of one page are two tabs, though they share a title.")
+        XCTAssertEqual(store.split?.region, PageRegion(x: 40, y: 50, width: 220, height: 120))
+        store.openToSide(page: 1, region: figure)
+        XCTAssertEqual(store.sideEditors.count, 5, "The same box again brings its tab to the front.")
+        for editor in store.sideEditors { if case let .page(state) = editor, state.region != nil { store.closeSideEditor(editor.id) } }
         for index in 0..<10 { store.openToSide(page: index % 4, title: "Tab \(index)") }
         XCTAssertLessThanOrEqual(store.sideEditors.count, 8, "At most eight side tabs.")
         store.closeBook()

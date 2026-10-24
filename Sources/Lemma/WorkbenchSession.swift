@@ -57,6 +57,20 @@ struct WindowSession: Codable, Equatable {
 struct WorkbenchSession: Codable {
     var windows: [WindowSession] = []
     var books: [String: BookEditorState] = [:]
+    /// Boxes of pages floating above the windows, which outlive their books' tabs, and whether Hide All put them away.
+    var floatingBoxes: [FloatingBox] = []
+    var floatingBoxesHidden = false
+}
+
+extension WorkbenchSession {
+    /// Sessions saved before floating boxes have none.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        windows = try container.decode([WindowSession].self, forKey: .windows)
+        books = try container.decode([String: BookEditorState].self, forKey: .books)
+        floatingBoxes = try container.decodeIfPresent([FloatingBox].self, forKey: .floatingBoxes) ?? []
+        floatingBoxesHidden = try container.decodeIfPresent(Bool.self, forKey: .floatingBoxesHidden) ?? false
+    }
 }
 
 @MainActor
@@ -193,7 +207,6 @@ extension StudyStore {
             if openLabID == nil, let notebook = workspace?.labs.first { openLabNotebook(notebook.id) }
         }
         saveWorkbench()
-        fitPageIfOverflowing()
     }
 }
 

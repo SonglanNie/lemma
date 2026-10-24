@@ -226,6 +226,12 @@ private struct LemmaCommands: Commands {
             Button("Toggle Panel", action: store.togglePanel).keyboardShortcut("j").disabled(store.workspace == nil)
             Button("Python Console") { store.toggleConsole() }.keyboardShortcut("`", modifiers: .control).disabled(store.workspace == nil)
             Button(store.split == nil ? "Split Editor" : "Close Side Editor", action: store.toggleSplit).keyboardShortcut("\\").disabled(store.document == nil)
+            Button("Open Selection to the Side", action: store.openSelectionToSide).disabled(!store.reader.hasSelection)
+            Button("Draw a Box to the Side…") { store.drawBox(.side) }.disabled(store.document == nil)
+            Button("Draw a Floating Box…") { store.drawBox(.float) }.disabled(store.document == nil)
+            Button(app.floatingBoxes.hidden ? "Show Floating Boxes" : "Hide Floating Boxes") { app.floatingBoxes.setHidden(!app.floatingBoxes.hidden) }
+                .disabled(app.floatingBoxes.boxes.isEmpty)
+            Button("Close All Floating Boxes") { app.floatingBoxes.closeAll() }.disabled(app.floatingBoxes.boxes.isEmpty)
             Button("Zen Mode", action: store.toggleFocus).keyboardShortcut("z", modifiers: [.command, .option]).disabled(store.document == nil)
             Toggle("Minimap", isOn: Bindable(app).showMinimap)
             // VS Code's view shortcuts, which the activity bar shows.

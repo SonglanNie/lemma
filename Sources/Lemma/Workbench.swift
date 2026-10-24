@@ -48,6 +48,8 @@ struct SplitEditorState: Codable, Equatable, Identifiable {
     var title: String
     /// The library PDF shown beside the reader; it may also be the main book. Nil for a reference in the main book.
     var bookID: String? = nil
+    /// The box of the page it was opened on (a selection, a captured region or a ⌘-drag), shown fitted to the view.
+    var region: PageRegion? = nil
     /// Each PDF view keeps its own viewport when changing side tabs or reopening the workbench.
     var scale: Double? = nil
     var positionX: Double? = nil
@@ -199,7 +201,7 @@ extension StudyStore {
             // Page, editor and inspector do not fit side by side in a laptop-sized window: make room, and give it back on close.
             showStudy = false; labHidInspector = true
         }
-        if case let .page(state) = editor, let index = sideEditors.firstIndex(where: { if case let .page(other) = $0 { other.title == state.title && other.bookID == state.bookID } else { false } }) {
+        if case let .page(state) = editor, let index = sideEditors.firstIndex(where: { if case let .page(other) = $0 { other.title == state.title && other.bookID == state.bookID && other.region == state.region } else { false } }) {
             sideEditors[index] = editor
         } else if let index = sideEditors.firstIndex(where: { $0.id == editor.id }) {
             sideEditors[index] = editor
@@ -281,16 +283,63 @@ extension StudyStore {
         split = SplitEditorState(pageIndex: pageIndex, target: nil, title: title ?? pageText(pageIndex))
     }
 
-    /// Fits the page to the reader's width when it no longer fits, for example after opening the side editor.
-    func fitPageIfOverflowing() {
-        DispatchQueue.main.async { [weak self] in
-            guard let view = self?.reader.view, let page = view.currentPage else { return }
-            if page.displayedSize.width * view.scaleFactor > view.bounds.width - 16 { self?.reader.fitWidth() }
+    /// Opens a box of a page beside the reader, fitted to the side view: a figure, a table or a passage kept in sight.
+    /// Each box is a tab of its own; the same box again brings its tab to the front.
+    func openToSide(page pageIndex: Int, region: CGRect) {
+        split = SplitEditorState(pageIndex: pageIndex, target: nil, title: boxTitle(page: pageIndex, region: region), region: PageRegion(region))
+    }
+
+    /// A box is named after the figure, table, equation or statement it holds most of (“Figure 1.1”), otherwise after
+    /// its page: the text inside a figure is its labels, which read as nonsense.
+    func boxTitle(page pageIndex: Int, region: CGRect) -> String {
+        func overlap(_ target: ReferenceTarget) -> CGFloat {
+            let object = target.region.rect, shared = object.intersection(region)
+            guard !shared.isNull, object.width > 0, object.height > 0 else { return 0 }
+            return shared.width * shared.height / (object.width * object.height)
+        }
+        let held = (analysis?.analysis?.definitions ?? [])
+            .filter { $0.pageIndex == pageIndex && $0.key.kind != .section && $0.key.kind != .chapter && overlap($0) >= 0.5 }
+            .max { overlap($0) < overlap($1) }
+        return held?.key.spokenTitle ?? "Region · \(shortPageText(pageIndex))"
+    }
+
+    /// The selection, text or a captured region, beside the reader.
+    func openSelectionToSide() {
+        guard reader.hasSelection, let (pageIndex, region, _) = reader.selection else { return }
+        openToSide(page: pageIndex, region: region)
+    }
+
+    /// Draw a box on the page and it opens beside the reader, as a ⌘-drag does, or floats above it, as a ⌘⇧-drag does.
+    /// Asked again while drawing for the same place, it stops.
+    func drawBox(_ destination: BoxDestination) {
+        if reader.regionMode, reader.boxDestination == destination { reader.regionMode = false; return }
+        reader.view?.clearSelection()
+        reader.selection = nil; reader.hasSelection = false
+        reader.regionMode = true
+        reader.boxDestination = destination
+    }
+
+    /// A box drawn on the page, sent where it was drawn for.
+    func openBox(_ destination: BoxDestination, page pageIndex: Int, region: CGRect) {
+        switch destination {
+        case .side: openToSide(page: pageIndex, region: region)
+        case .float: floatBox(page: pageIndex, region: region)
         }
     }
 
     func toggleSplit() {
         if split != nil { split = nil } else { openToSide(page: reader.pageNumber - 1) }
+    }
+
+    /// The split button's menu: what to open beside the page, each with its quicker way.
+    var splitMenuItems: [VSMenuItem] {
+        var items: [VSMenuItem] = [
+            .action("This Page", shortcut: split == nil ? "⌘\\" : nil) { [self] in openToSide(page: reader.pageNumber - 1) },
+            .action("Selection", enabled: reader.hasSelection) { [self] in openSelectionToSide() },
+            .action("Draw a Box…", shortcut: "⌘-drag") { [self] in drawBox(.side) },
+        ]
+        if split != nil { items += [.separator, .action("Close Side Editor", shortcut: "⌘\\") { [self] in toggleSplit() }] }
+        return items
     }
 
     // MARK: Breadcrumbs
