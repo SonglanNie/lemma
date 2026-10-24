@@ -239,6 +239,19 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.4.0-fork.1: open to the side", "split-horizontal", [
+            "⌘-drag a box around a figure, table or passage to open it beside the page. The arrow beside the split editor button opens this page, the selection or a box you draw there. ⌘-click still looks a word up.",
+            "⇧⌘-drag a box, in the main editor or the side editor, or click the picture-in-picture button, and it floats above the page in a window of its own, at the same size and zoom. Resizing the window scales it; keep several, from several books: they stay open across tabs and relaunches.",
+            "The side view opens fitted to the box, with the rest of the page around it, and names its tab after the figure, table or equation inside.",
+            "Opening the side editor, a notebook or a derivation, changing the layout or resizing a side bar keeps the page's zoom. Side pages open fitted to their text, not their paper."
+        ]),
+        ("Lemma 3.4.0-fork.1: windows", "multiple-windows", [
+            "Lemma can have several windows, each with its own tabs, panels and layout (File › New Window, ⇧⌘N). A new window takes the side bars, panel and sizes of the window it comes from.",
+            "Drag a book's tab out of its window to open it in a new window there, onto another window's tabs or page to move it into that window, or choose Move Tab to New Window from the tab's menu.",
+            "A book is open in one window at a time: opening it from another window brings its window to the front. Lemma reopens its windows as you left them.",
+            "The find box keeps each book's own query: switching tabs no longer searches the other book or moves its page. Return or ⌘G searches the book in front.",
+            "This fork's build has no Sparkle update feed, so an upstream release never installs over it. Lemma › Check for Updates… reports a newer release of this fork and opens its page."
+        ]),
         ("Lemma 3.4: peeks you can keep in sight", "eye", [
             "Drag a peek by its title bar to move it anywhere: it stays open while you read on, until you close it.",
             "⇧-click another reference to open its peek beside the ones already open: a figure and the theorem that uses it, side by side.",
