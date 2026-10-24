@@ -23,7 +23,6 @@ extension StudyStore {
         selectedProjectID = id
         if focusMode { toggleFocus() }
         showSideEditor(.project(id))
-        fitPageIfOverflowing()
     }
 
     func updateProject(_ id: UUID, _ edit: (inout ResearchProject) -> Void) {
