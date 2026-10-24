@@ -7,7 +7,7 @@ Thank you for helping. Lemma is a native macOS app written in Swift (SwiftUI and
 Requirements: macOS 15 or later and Xcode 16 or later (its command-line tools are enough).
 
 ```sh
-git clone https://github.com/fus3r/lemma.git
+git clone https://github.com/SonglanNie/lemma.git
 cd lemma
 scripts/build-app.sh          # optimized build: build/Lemma.app
 open build/Lemma.app
