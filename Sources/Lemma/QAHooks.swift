@@ -185,6 +185,17 @@ extension StudyStore {
         state["arxivSearching"] = arxivSearching
         state["arxivSearchError"] = arxivSearchError
         state["referencePeek"] = referencePeek?.mention.key.title
+        func resizeArea(in view: NSView) -> PeekResizeAreaView? {
+            (view as? PeekResizeAreaView) ?? view.subviews.lazy.compactMap { resizeArea(in: $0) }.first
+        }
+        if let area = NSApp.windows.lazy.filter(\.isVisible).compactMap({ $0.contentView?.superview.flatMap { resizeArea(in: $0) } }).first,
+           let window = area.window {
+            // Screen rects (bottom-left origin) where the pointer catches the open peek's edges.
+            state["peekEdges"] = area.edges.reduce(into: [String: [Double]]()) {
+                let rect = window.convertToScreen(area.convert(area.rects(of: $1).reduce(CGRect.null) { $0.union($1) }, to: nil))
+                $0["\($1)"] = [rect.minX, rect.minY, rect.width, rect.height].map(Double.init)
+            }
+        }
         state["tabs"] = tabs.map(\.title)
         state["navigator"] = navigatorSection.rawValue
         state["panel"] = showPanel ? panelTab.rawValue : nil
@@ -308,6 +319,16 @@ extension StudyStore {
             guard let mention = references?.mentions(onPage: pageIndex).first(where: { !$0.isDefinition && (kind == nil || $0.key.kind == kind) && (info["number"] == nil || $0.key.number == info["number"]) })
             else { throw QAHooks.QAError.missing("mention on this page") }
             peekReference(mention, pageIndex: pageIndex)
+        case "peekResize":
+            // The open peek's edge (edge=right|top|bottom|topRight|bottomRight, its corner by default) dragged by dx, dy
+            // screen points (down positive), as the reader drags it.
+            func area(in view: NSView) -> PeekResizeAreaView? {
+                (view as? PeekResizeAreaView) ?? view.subviews.lazy.compactMap { area(in: $0) }.first
+            }
+            guard let found = NSApp.windows.lazy.filter(\.isVisible).compactMap({ $0.contentView?.superview.flatMap { area(in: $0) } }).first
+            else { throw QAHooks.QAError.missing("peek") }
+            let edge = found.edges.first { "\($0)" == info["edge"] } ?? found.edges[0]
+            found.drag(edge, by: CGSize(width: Double(info["dx"] ?? "") ?? 0, height: Double(info["dy"] ?? "") ?? 0)); found.onEnd()
         case "lookup": lookupDefinition(info["term"] ?? "", pageIndex: reader.pageNumber - 1, region: nil)
         case "select":
             // Selects the first occurrence of a phrase on the current page, as a drag would.

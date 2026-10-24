@@ -38,7 +38,8 @@ final class VisualQATests: XCTestCase {
         if let index = store.references, let mention = index.mentions(onPage: page - 1).first(where: { !$0.isDefinition && $0.key.kind == .equation })
             ?? index.mentions(onPage: page - 1).first(where: { !$0.isDefinition }) {
             let request = ReferencePeekRequest(workspaceID: store.workspace!.id, mention: mention, pageIndex: page - 1)
-            try await capturePane(ReferencePeekPane(store: store, request: request), named: "02-peek.png", in: output)
+            let sizing = PeekSizing(reading: try XCTUnwrap(store.reader.view), popover: true)
+            try await capturePane(ReferencePeekPane(store: store, request: request, sizing: sizing, frame: PeekPreviewFrame()), named: "02-peek.png", in: output)
         }
 
         if let document = store.document, let pdfPage = document.page(at: page - 1) {
