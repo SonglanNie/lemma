@@ -25,8 +25,8 @@ shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.4.0",
-    "CFBundleVersion": "45", "LSMinimumSystemVersion": "15.0",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.4.0-fork.1",
+    "CFBundleVersion": "51", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",
@@ -39,11 +39,9 @@ info = {
     # 2.4: rows dragged inside the Library tree (between libraries, folders and sections).
     "UTExportedTypeDeclarations": [{"UTTypeIdentifier": "com.lemma.library-items", "UTTypeDescription": "Lemma Library items",
                                     "UTTypeConformsTo": ["public.data"], "UTTypeTagSpecification": {}}],
-    # 3.1: updates through Sparkle. Each GitHub release publishes the appcast beside its disk image; both are signed with
-    # the project's EdDSA key, and Sparkle asks the reader at the second launch before checking on its own (once a day).
-    "SUFeedURL": "https://github.com/fus3r/lemma/releases/latest/download/appcast.xml",
-    "SUPublicEDKey": "KoHep0rUqTengXG//fx6NTQl+51MkljJWgSssFbCNLc=",
-    "SURequireSignedFeed": True, "SUVerifyUpdateBeforeExtraction": True, "SUScheduledCheckInterval": 86400,
+    # This fork publishes no Sparkle feed: without SUFeedURL, Sparkle stays off (Updates.isEnabled), so upstream releases,
+    # which carry upstream's valid signature, cannot install over this build. Check for Updates… then only reports a newer
+    # release of this fork (UpdateChecker) and opens its page.
     # Two free books of the catalog are served over plain HTTP by their authors (their HTTPS certificates are self-signed).
     "NSAppTransportSecurity": {"NSExceptionDomains": {
         "incompleteideas.net": {"NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": True},
