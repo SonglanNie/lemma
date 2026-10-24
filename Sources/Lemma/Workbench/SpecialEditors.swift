@@ -239,6 +239,9 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.3.1", "check", [
+            "The page layout chosen in the page's context menu (Single Page, Two Pages, Two Pages Continuous) stays, and the book opens in it next time. Two Pages Continuous is in Page Layout and the command palette too. Thanks to Sudhenduahir for the report."
+        ]),
         ("Lemma 3.3: reading, refined", "book", [
             "Pages sit closer together (8 pt), and Settings › Reading › Gap between pages sets the gap from 0 to 32 pt.",
             "Drag a reference preview off its line to keep it open in a window of its own; previews open at the page's width.",

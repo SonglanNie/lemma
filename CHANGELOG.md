@@ -2,6 +2,12 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.3.1 (October 2026)
+
+**Fixed.**
+- Single Page, Two Pages and Two Pages Continuous, chosen in the page's context menu, lasted a moment before Lemma put Continuous back. The book now keeps the layout chosen there and opens in it next time, as with **Page Layout** in the editor's … menu. Reported by Sudhenduahir ([#12](https://github.com/fus3r/lemma/issues/12)).
+- **Two Pages Continuous** is one of Lemma's own page layouts too, beside Single Page, Continuous and Two Pages: in Page Layout, and as "Reading: Two Pages Continuous" in the command palette.
+
 ## 3.3.0 (October 2026)
 
 **Reading, refined by Lemma's first contributor.** Six changes by Songlan Nie, who made them while reading with Lemma:
