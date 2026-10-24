@@ -5,13 +5,23 @@
 <p align="center"><b>An IDE for reading mathematics.</b><br>
 A free, open-source PDF reader for the Mac that understands textbooks and papers the way an editor understands code.</p>
 
-<p align="center"><a href="https://github.com/fus3r/lemma/releases/latest/download/Lemma.dmg"><b>Download for macOS</b></a> · macOS 15 or later, Apple silicon and Intel</p>
+<p align="center"><a href="https://github.com/SonglanNie/lemma/releases/latest/download/Lemma.dmg"><b>Download for macOS</b></a> · macOS 15 or later, Apple silicon and Intel</p>
 
 <p align="center"><sub>Lemma is not notarized yet, so the first time you open it macOS says it cannot verify it: click <b>Done</b>, then <b>System Settings › Privacy &amp; Security › Open Anyway</b>. Only once.</sub></p>
 
 <p align="center"><img src="docs/images/demo.gif" width="900" alt="Lemma reading its sample book: hovering “Theorem 1.3” previews it, clicking opens a peek beside the line, ⌘K asks about a proof with the equations it cites, proofs fold, and a derivation's wrong step is caught as a sign error, then fixed"></p>
 
 Open any mathematics, statistics or computer science PDF. Lemma reads it once, on your Mac, and the page becomes navigable: “Theorem 2.3”, “(3.44)”, “Figure 5”, “[12]” and index entries turn into links you can preview, peek at and follow without losing your place.
+
+## About this fork
+
+This is a modified version of [Lemma](https://github.com/fus3r/lemma) by its contributors, based on Lemma 3.4.0. It was changed by Songlan Nie, starting on 18 October 2026, and remains free software under the GNU GPL v3. The commit history records every change. In brief:
+
+- **Updates.** This fork's build has no Sparkle update feed, so an upstream release never installs over it. **Lemma › Check for Updates…** reports a newer release of this fork and opens its page. **Help › Report an Issue…** opens an issue here.
+
+Releases of this fork are named after the upstream version they are based on, with a number of their own: `v3.4.0-fork.1`, `v3.4.0-fork.2`, and so on. To release, set `CFBundleShortVersionString` in [package-app.py](scripts/package-app.py) to the new version, write its notes in `docs/releases/v<version>.md`, commit both and push a tag `v<version>`. GitHub Actions then builds the app for Apple silicon and Intel and publishes it as a release with its disk image, under its version's name and as `Lemma.dmg` for the download link above ([release.yml](.github/workflows/release.yml)). This copy is still called Lemma and uses the same app identifier, so installing it replaces the original Lemma, keeping your library and settings.
+
+A build with only the Command Line Tools (no Xcode) works for Apple silicon with `swift build -c release --disable-keychain && scripts/build-app.sh`.
 
 ## What Lemma does
 
@@ -37,13 +47,13 @@ Open any mathematics, statistics or computer science PDF. Lemma reads it once, o
 
 ## Install
 
-Download [Lemma.dmg](https://github.com/fus3r/lemma/releases/latest/download/Lemma.dmg) (the [latest release](https://github.com/fus3r/lemma/releases/latest) has it under its version's name too), open it and drag Lemma into Applications. Lemma runs on macOS 15 (Sequoia) or later, on Apple silicon and Intel Macs.
+Download [Lemma.dmg](https://github.com/SonglanNie/lemma/releases/latest/download/Lemma.dmg) (the [latest release](https://github.com/SonglanNie/lemma/releases/latest) has it under its version's name too), open it and drag Lemma into Applications. Lemma runs on macOS 15 (Sequoia) or later, on Apple silicon and Intel Macs.
 
 This build is not yet notarized by Apple, so the first time you open it macOS says it cannot verify it. Click **Done**, then open **System Settings › Privacy & Security** and click **Open Anyway** next to Lemma (or run `xattr -dr com.apple.quarantine /Applications/Lemma.app`). You only do this once.
 
 To see what Lemma does without a PDF at hand, choose **Help › Open the Sample Book**: a twelve-page book on least squares, written to show the links, the structure, the proof debugger and the derivation checker.
 
-Lemma updates itself: **Lemma › Check for Updates…** installs a new version and relaunches. It checks on its own, once a day, only if you agree (it asks once).
+**Lemma › Check for Updates…** tells you when a newer release is out and opens its page; install it the same way. Settings › Updates can check once a day.
 
 ## Privacy
 
@@ -52,7 +62,7 @@ Lemma has no account, no analytics and no tracking. Your books, notes and readin
 ## Build it yourself
 
 ```sh
-git clone https://github.com/fus3r/lemma.git && cd lemma
+git clone https://github.com/SonglanNie/lemma.git && cd lemma
 scripts/build-app.sh && open build/Lemma.app
 ```
 
@@ -65,8 +75,8 @@ You need macOS 15 and Xcode 16 or later. [CONTRIBUTING.md](CONTRIBUTING.md) expl
 - [Assistants](docs/ASSISTANTS.md): ChatGPT, Codex, Claude Code and API keys, and what each receives.
 - [The Lemma Tour](docs/TUTORIAL.md), [design notes](DESIGN.md), [changelog](CHANGELOG.md) and [history](docs/HISTORY.md).
 
-Found a bug or have an idea? Use **Help › Report an Issue…** in Lemma or [open an issue](https://github.com/fus3r/lemma/issues).
+Found a bug or have an idea? Use **Help › Report an Issue…** in Lemma or [open an issue](https://github.com/SonglanNie/lemma/issues).
 
 ## License
 
-Lemma is free software under the [GNU General Public License, version 3](LICENSE). It bundles Codicons (CC BY 4.0), colour themes from VS Code and their community authors (MIT, Apache 2.0), KaTeX (MIT) and its fonts (SIL Open Font License 1.1), Marked (MIT), DOMPurify (Apache 2.0) and Sparkle (MIT), which installs updates; **Help › Acknowledgements** shows every licence. Free textbooks in the catalog are downloaded from their authors' or publishers' sites and remain under their own terms.
+Lemma is free software under the [GNU General Public License, version 3](LICENSE). It bundles Codicons (CC BY 4.0), colour themes from VS Code and their community authors (MIT, Apache 2.0), KaTeX (MIT) and its fonts (SIL Open Font License 1.1), Marked (MIT), DOMPurify (Apache 2.0) and Sparkle (MIT), which this fork's builds do not use for updates; **Help › Acknowledgements** shows every licence. Free textbooks in the catalog are downloaded from their authors' or publishers' sites and remain under their own terms.
