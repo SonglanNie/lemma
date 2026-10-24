@@ -5,7 +5,7 @@ import LemmaCore
 /// Where Lemma lives on the web, and what version this is. One place to change when the repository moves.
 enum LemmaLinks {
     /// The GitHub repository (owner/name) that hosts the source, the issue tracker and the releases.
-    static let repository = "fus3r/lemma"
+    static let repository = "SonglanNie/lemma"
     static let site = URL(string: "https://github.com/\(repository)")!
     static let releases = URL(string: "https://github.com/\(repository)/releases")!
     static let latestRelease = URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!
@@ -162,10 +162,11 @@ final class UpdateChecker {
         enum CodingKeys: String, CodingKey { case tag = "tag_name", page = "html_url" }
     }
 
-    /// Compares dotted version numbers numerically ("3.10.0" is newer than "3.9.2").
+    /// Compares versions by their numbers in order ("3.10.0" is newer than "3.9.2"). A fork release adds its own number
+    /// after the version it is based on: "3.2.1-fork.2" is newer than "3.2.1-fork.1" and "3.2.1", older than "3.2.2".
     nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
         func parts(_ text: String) -> [Int] {
-            text.split(separator: "-").first.map { $0.split(separator: ".").map { Int($0) ?? 0 } } ?? []
+            text.split(whereSeparator: { !$0.isNumber }).compactMap { Int($0) }
         }
         let a = parts(candidate), b = parts(current)
         for index in 0..<max(a.count, b.count) {
