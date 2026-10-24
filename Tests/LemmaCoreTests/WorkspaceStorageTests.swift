@@ -86,6 +86,36 @@ final class WorkspaceStorageTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: repository.directory(for: "unsaved").path))
     }
 
+    func testTwoPagesContinuousIsSavedSoOlderVersionsStillOpenTheBook() throws {
+        let repository = WorkspaceRepository(root: root)
+        var book = workspace("book", title: "Book"); book.reading.layout = .twoPagesContinuous
+        try repository.save(book)
+        XCTAssertEqual(try repository.load(id: "book")?.reading.layout, .twoPagesContinuous)
+        var reading = book.reading; reading.pageIndex = 12
+        repository.saveReadingLater(reading, lastOpenedAt: book.lastOpenedAt, readingLog: book.readingLog, id: "book")
+        XCTAssertEqual(try repository.load(id: "book")?.reading.layout, .twoPagesContinuous, "The position saved beside it keeps the layout.")
+
+        // Lemma 3.3.0 knew three layouts and refused a workspace naming another one.
+        struct OlderWorkspace: Decodable {
+            struct Reading: Decodable { enum Layout: String, Decodable { case singlePage, continuous, twoPages }; var layout: Layout? }
+            var reading: Reading
+        }
+        let manifest = try Data(contentsOf: repository.directory(for: "book").appendingPathComponent("workspace.json"))
+        XCTAssertEqual(try JSONDecoder().decode(OlderWorkspace.self, from: manifest).reading.layout, .twoPages)
+        for layout in ReadingLayout.allCases where layout != .twoPagesContinuous {
+            book.reading.layout = layout
+            try repository.save(book)
+            let saved = try Data(contentsOf: repository.directory(for: "book").appendingPathComponent("workspace.json"))
+            XCTAssertEqual(try JSONDecoder().decode(OlderWorkspace.self, from: saved).reading.layout?.rawValue, layout.rawValue)
+            XCTAssertEqual(try repository.load(id: "book")?.reading.layout, layout)
+        }
+
+        // A layout added by a later version reads as none, and the book still opens.
+        let newer = try JSONDecoder().decode(ReadingState.self, from: Data(#"{"pageIndex": 3, "scale": 1, "returnNote": "", "layout": "threePages"}"#.utf8))
+        XCTAssertNil(newer.layout)
+        XCTAssertEqual(newer.pageIndex, 3)
+    }
+
     func testFingerprintsAreReadOnceAndForgottenWhenTheFileChanges() throws {
         let file = root.appendingPathComponent("book.pdf")
         try Data("first bytes".utf8).write(to: file)

@@ -165,8 +165,10 @@ public enum NoteState: String, Codable, CaseIterable, Sendable {
 }
 
 public enum ReadingLayout: String, Codable, CaseIterable, Sendable {
-    case singlePage, continuous, twoPages
-    public var label: String { switch self { case .singlePage: "Single Page"; case .continuous: "Continuous"; case .twoPages: "Two Pages" } }
+    case singlePage, continuous, twoPages, twoPagesContinuous
+    public var label: String {
+        switch self { case .singlePage: "Single Page"; case .continuous: "Continuous"; case .twoPages: "Two Pages"; case .twoPagesContinuous: "Two Pages Continuous" }
+    }
     /// Books the reader has not set a layout for scroll continuously, as an editor does.
     public static let standard: ReadingLayout = .continuous
 }
@@ -252,6 +254,25 @@ public struct ReadingState: Codable, Equatable, Sendable {
     public var positionY: Double?
     public var layout: ReadingLayout?
     public init() {}
+
+    // Lemma 3.3.0 and older refuse a workspace naming a layout they do not know: Two Pages Continuous is written as Two
+    // Pages plus a flag they ignore, so they still open the book, side by side. A layout from a newer version reads as none.
+    private enum CodingKeys: String, CodingKey { case pageIndex, scale, returnNote, positionX, positionY, layout, twoPagesContinuous }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pageIndex = try c.decode(Int.self, forKey: .pageIndex); scale = try c.decode(Double.self, forKey: .scale)
+        returnNote = try c.decode(String.self, forKey: .returnNote)
+        positionX = try c.decodeIfPresent(Double.self, forKey: .positionX); positionY = try c.decodeIfPresent(Double.self, forKey: .positionY)
+        layout = try c.decodeIfPresent(String.self, forKey: .layout).flatMap(ReadingLayout.init(rawValue:))
+        if layout == .twoPages, try c.decodeIfPresent(Bool.self, forKey: .twoPagesContinuous) == true { layout = .twoPagesContinuous }
+    }
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(pageIndex, forKey: .pageIndex); try c.encode(scale, forKey: .scale); try c.encode(returnNote, forKey: .returnNote)
+        try c.encodeIfPresent(positionX, forKey: .positionX); try c.encodeIfPresent(positionY, forKey: .positionY)
+        try c.encodeIfPresent(layout == .twoPagesContinuous ? ReadingLayout.twoPages : layout, forKey: .layout)
+        if layout == .twoPagesContinuous { try c.encode(true, forKey: .twoPagesContinuous) }
+    }
 }
 
 public struct StudyWorkspace: Codable, Identifiable, Equatable, Sendable {

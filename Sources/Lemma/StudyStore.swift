@@ -301,6 +301,11 @@ final class StudyStore {
             self.scheduleViewportSave()
             if moved, !self.reader.isScrubbing, self.reader.showReferenceLinks { self.references?.prefetch(around: page) }
         }
+        reader.onLayoutChanged = { [weak self] layout in
+            // Applying the book's own layout reports it too: only another one is saved.
+            guard let self, self.workspace != nil, (self.workspace?.reading.layout ?? .standard) != layout else { return }
+            self.updateLayout(layout)
+        }
         saveTimer.action = { [weak self] in self?.save(wait: false) }
         reader.onSelectNote = { [weak self] id in self?.selectNote(id) }
         reader.onInk = { [weak self] stroke in self?.addInk(stroke, undoManager: self?.reader.view?.undoManager) }

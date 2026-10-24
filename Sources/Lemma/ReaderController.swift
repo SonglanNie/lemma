@@ -22,6 +22,8 @@ final class ReaderController {
     var hasSelection = false
     var selection: (Int, CGRect, String)?
     var onReadingChanged: ((Int, Double) -> Void)?
+    /// The page layout PDFKit switched to from its own context menu (Single Page… Two Pages Continuous).
+    var onLayoutChanged: ((ReadingLayout) -> Void)?
     var searchText = ""
     var searchResults: [PDFSelection] = []
     var searchIndex = 0
@@ -1217,6 +1219,20 @@ extension PDFView {
     }
 }
 
+extension ReadingLayout {
+    var displayMode: PDFDisplayMode {
+        switch self { case .singlePage: .singlePage; case .continuous: .singlePageContinuous; case .twoPages: .twoUp; case .twoPagesContinuous: .twoUpContinuous }
+    }
+    init(_ mode: PDFDisplayMode) {
+        switch mode {
+        case .singlePage: self = .singlePage
+        case .twoUp: self = .twoPages
+        case .twoUpContinuous: self = .twoPagesContinuous
+        default: self = .continuous
+        }
+    }
+}
+
 struct PDFReaderSurface: NSViewRepresentable {
     let document: PDFDocument
     let reading: ReadingState
@@ -1251,7 +1267,7 @@ struct PDFReaderSurface: NSViewRepresentable {
     }
     func updateNSView(_ view: RegionPDFView, context: Context) {
         view.setPageGap(pageGap, side: 12)
-        let mode: PDFDisplayMode = switch reading.layout ?? .standard { case .singlePage: .singlePage; case .continuous: .singlePageContinuous; case .twoPages: .twoUp }
+        let mode = (reading.layout ?? .standard).displayMode
         if view.displayMode != mode { view.displayMode = mode }
         if view.document !== document {
             view.dismissDefinitionLookup()
@@ -1316,6 +1332,14 @@ struct PDFReaderSurface: NSViewRepresentable {
                     }
                 })
             }
+            // PDFKit's context menu sets the display mode itself; the book must take that layout, or the next update of
+            // this view would put the book's own back.
+            observations.append(NotificationCenter.default.addObserver(forName: .PDFViewDisplayModeChanged, object: view, queue: .main) { [weak self, weak view] _ in
+                MainActor.assumeIsolated {
+                    guard let view else { return }
+                    self?.controller.onLayoutChanged?(ReadingLayout(view.displayMode))
+                }
+            })
             observeScroll(in: view)
         }
         func observeScroll(in view: RegionPDFView) {

@@ -174,6 +174,8 @@ extension StudyStore {
             "studySection": studySection.rawValue, "status": status, "notes": workspace?.notes.count ?? 0
         ]
         state["workspace"] = workspace?.title
+        state["layout"] = workspace?.reading.layout?.rawValue
+        state["displayMode"] = reader.view?.displayMode.rawValue
         state["libraries"] = libraries.collections.map { collection in
             ["id": collection.id, "title": collection.displayTitle, "count": libraries.entries.filter { $0.collectionID == collection.id }.count] as [String: Any]
         }
@@ -333,6 +335,21 @@ extension StudyStore {
             if analysis?.analysis == nil { throw QAHooks.QAError.missing("finished analysis") }
         case "layout":
             if let layout = info["value"].flatMap(ReadingLayout.init(rawValue:)) { updateLayout(layout) }
+        case "pageMenu":
+            // The context menu a right-click in the middle of the page opens, PDFKit's items included; perform=<title> runs
+            // one of them as the menu would. Writes the items, then the display mode and the book's layout.
+            guard let view = reader.view, let window = view.window,
+                  let event = NSEvent.mouseEvent(with: .rightMouseDown, location: view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil),
+                                                 modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                 context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
+                  let menu = view.menu(for: event) else { throw QAHooks.QAError.missing("page menu") }
+            if let title = info["perform"] {
+                guard let item = menu.items.first(where: { $0.title == title }), let action = item.action else { throw QAHooks.QAError.missing("menu item \(title)") }
+                NSApp.sendAction(action, to: item.target ?? view, from: item)
+            }
+            let items: [[String: Any]] = menu.items.map { ["title": $0.title, "on": $0.state == .on, "action": $0.action.map(NSStringFromSelector) ?? ""] }
+            let result: [String: Any] = ["items": items, "displayMode": view.displayMode.rawValue, "layout": workspace?.reading.layout?.rawValue ?? ""]
+            try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "page-menu").json"))
         case "fitWidth": reader.fitWidth()
         case "appearance":
             NSApp.appearance = info["value"] == "light" ? NSAppearance(named: .aqua) : info["value"] == "dark" ? NSAppearance(named: .darkAqua) : nil
