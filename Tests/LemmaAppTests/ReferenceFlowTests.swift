@@ -212,8 +212,11 @@ final class ReferenceFlowTests: XCTestCase {
         XCTAssertEqual(view.keptReferencePeeks.count, 3)
         moved.panel.fit(CGSize(width: before.width + 50, height: before.height + 20))
         let after = try XCTUnwrap(moved.panel.frame)
+        // Its title bar stays on its screen: on a screen lower than the fixture's window (a CI runner's), its top comes down.
+        let screen = fixture.window.childWindows?.first { $0.frame == after }?.screen?.visibleFrame
         XCTAssertEqual(after.minX, before.minX + 40, accuracy: 0.5, "Resized, a kept peek keeps its left edge…")
-        XCTAssertEqual(after.maxY, before.maxY - 30, accuracy: 0.5, "…and its top edge, where the reader put it.")
+        XCTAssertEqual(after.maxY, min(before.maxY - 30, screen?.maxY ?? .greatestFiniteMagnitude), accuracy: 0.5,
+                       "…and its top edge, where the reader put it: \(before) → \(after), screen \(String(describing: screen))")
 
         // Its own close button closes one kept peek.
         moved.frame.close()
