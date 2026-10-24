@@ -15,7 +15,7 @@ Open any mathematics, statistics or computer science PDF. Lemma reads it once, o
 
 ## What Lemma does
 
-**References you never have to hunt for.** Hover a reference to preview it, click to peek at it beside the line you are reading, ⌘-click a term to look up its definition. Back (⌥⌘←) returns you to where you were. Citations open their entry in the bibliography and can find the paper online when you ask.
+**References you never have to hunt for.** Hover a reference to preview it, click to peek at it beside the line you are reading, ⇧-click others to keep several peeks in sight, ⌘-click a term to look up its definition. Back (⌥⌘←) returns you to where you were. Citations open their entry in the bibliography and can find the paper online when you ask.
 
 **The structure of the text.** An outline of the book's definitions, theorems and proofs; proofs you can fold to try them yourself first; what a result uses and what uses it; a map of a chapter's dependencies; the notation in force on each line; and a header that tells you which statement you are in.
 

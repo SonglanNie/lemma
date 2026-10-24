@@ -239,6 +239,11 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.4: peeks you can keep in sight", "eye", [
+            "Drag a peek by its title bar to move it anywhere: it stays open while you read on, until you close it.",
+            "⇧-click another reference to open its peek beside the ones already open: a figure and the theorem that uses it, side by side.",
+            "Peeks open at a little less than your reading zoom and resize by their edges, by Songlan Nie, Lemma's first contributor."
+        ]),
         ("Lemma 3.3.1", "check", [
             "The page layout chosen in the page's context menu (Single Page, Two Pages, Two Pages Continuous) stays, and the book opens in it next time. Two Pages Continuous is in Page Layout and the command palette too. Thanks to Sudhenduahir for the report."
         ]),

@@ -2,6 +2,17 @@
 
 The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](docs/HISTORY.md).
 
+## 3.4.0 (October 2026)
+
+**Peeks you can keep in sight.**
+- **Move a peek** by dragging its title bar: it then stays open while you read on, scroll and click elsewhere, until you close it. In the Classic window, drag the popover away from its reference.
+- **⇧-click another reference** to open its peek beside the ones already open, so that a figure and the theorem that uses it stay in sight together. ⇧-clicking a reference whose peek is open brings that peek forward; with text selected, ⇧-click still extends the selection.
+- Peeks open with the page at a little less than your reading zoom, as wide as the page and within 70% of the window, instead of 556 points whatever the zoom. Drag a peek's right edge, its bottom edge or the corner between them to resize it, and the page refits to the new width. By Songlan Nie.
+
+**Fixed.**
+- The Classic peek no longer grows off the screen's edge away from its reference, and resizing a peek dragged away from its reference no longer makes Lemma quit. By Songlan Nie.
+- The Library shows it is scanning from the moment a PDF is dropped on it, instead of reading as up to date until the PDF appears. By Songlan Nie.
+
 ## 3.3.1 (October 2026)
 
 **Fixed.**
