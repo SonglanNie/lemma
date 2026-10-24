@@ -194,6 +194,17 @@ extension StudyStore {
         if let peek = NSApp.windows.lazy.filter(\.isVisible).compactMap({ $0.contentView.flatMap { preview(in: $0) } }).first {
             state["peekPreview"] = [peek.bounds.width, peek.bounds.height, peek.scaleFactor]
         }
+        func resizeArea(in view: NSView) -> PeekResizeAreaView? {
+            (view as? PeekResizeAreaView) ?? view.subviews.lazy.compactMap { resizeArea(in: $0) }.first
+        }
+        if let area = NSApp.windows.lazy.filter(\.isVisible).compactMap({ $0.contentView?.superview.flatMap { resizeArea(in: $0) } }).first,
+           let window = area.window {
+            // Screen rects (bottom-left origin) where the pointer catches the open peek's edges.
+            state["peekEdges"] = area.edges.reduce(into: [String: [Double]]()) {
+                let rect = window.convertToScreen(area.convert(area.rects(of: $1).reduce(CGRect.null) { $0.union($1) }, to: nil))
+                $0["\($1)"] = [rect.minX, rect.minY, rect.width, rect.height].map(Double.init)
+            }
+        }
         state["tabs"] = tabs.map(\.title)
         state["navigator"] = navigatorSection.rawValue
         state["panel"] = showPanel ? panelTab.rawValue : nil
@@ -321,13 +332,15 @@ extension StudyStore {
             panel.setFrame(panel.frameRect(forContentRect: CGRect(x: content.minX, y: content.maxY - width * content.height / content.width,
                                                                   width: width, height: width * content.height / content.width)), display: true)
         case "peekResize":
-            // The open peek's corner dragged by dx, dy screen points (down positive), as the reader drags its grip.
-            func grip(in view: NSView) -> PeekResizeGripView? {
-                (view as? PeekResizeGripView) ?? view.subviews.lazy.compactMap { grip(in: $0) }.first
+            // The open peek's edge (edge=right|top|bottom|topRight|bottomRight, its corner by default) dragged by dx, dy
+            // screen points (down positive), as the reader drags it.
+            func area(in view: NSView) -> PeekResizeAreaView? {
+                (view as? PeekResizeAreaView) ?? view.subviews.lazy.compactMap { area(in: $0) }.first
             }
-            guard let found = NSApp.windows.lazy.compactMap({ $0.contentView.flatMap { grip(in: $0) } }).first
+            guard let found = NSApp.windows.lazy.filter(\.isVisible).compactMap({ $0.contentView?.superview.flatMap { area(in: $0) } }).first
             else { throw QAHooks.QAError.missing("peek") }
-            found.onDrag(CGSize(width: Double(info["dx"] ?? "") ?? 0, height: Double(info["dy"] ?? "") ?? 0)); found.onEnd()
+            let edge = found.edges.first { "\($0)" == info["edge"] } ?? found.edges[0]
+            found.drag(edge, by: CGSize(width: Double(info["dx"] ?? "") ?? 0, height: Double(info["dy"] ?? "") ?? 0)); found.onEnd()
         case "toolbarMenu":
             // The split (value=split) or float button's menu, open for hold= milliseconds (600) and a snapshot named
             // <name>-menu, then closed.
@@ -694,6 +707,10 @@ extension StudyStore {
             reader.regionMode = true
             view.qaDrag(onPage: reader.pageNumber - 1, through: [CGPoint(x: x, y: y + h), CGPoint(x: x + w / 2, y: y + h / 2), CGPoint(x: x + w, y: y)])
         case "regionMode": reader.regionMode = info["value"] != "0"
+        case "windowFrame":
+            // x, y, w, h in screen points (bottom-left origin), as on a second display.
+            let value = { (key: String) in CGFloat(Double(info[key] ?? "") ?? 0) }
+            mainWindow?.setFrame(CGRect(x: value("x"), y: value("y"), width: value("w"), height: value("h")), display: true)
         case "activate":
             // A demo recorded with the window active (traffic lights, caret, selection colours), while the reader is away.
             NSApp.activate(ignoringOtherApps: true)

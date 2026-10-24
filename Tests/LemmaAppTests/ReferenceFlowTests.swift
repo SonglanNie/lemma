@@ -204,26 +204,95 @@ final class ReferenceFlowTests: XCTestCase {
 
     @MainActor
     func testPeekOpensJustBelowTheReadersZoomWithinTheWindow() {
-        let roomy = PeekSizing(scale: 1.5, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        let roomy = PeekSizing(scale: 1.5, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800))
         XCTAssertEqual(roomy.width(forPage: 612), 612 * 1.5 * PeekSizing.share + PeekSizing.sides, accuracy: 0.5,
                        "The page opens a little smaller than the reader shows it.")
-        let narrow = PeekSizing(scale: 1.5, opening: CGSize(width: 700, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        let narrow = PeekSizing(scale: 1.5, opening: CGSize(width: 700, height: 600), largest: CGSize(width: 1400, height: 800))
         XCTAssertEqual(narrow.width(forPage: 612), 700, "Within 70% of the window, the page is fitted rather than cut off.")
         XCTAssertEqual(narrow.zoom(forPage: 612, width: 700), (700 - PeekSizing.sides) / 612, accuracy: 0.001)
-        let zoomedOut = PeekSizing(scale: 0.6, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        let zoomedOut = PeekSizing(scale: 0.6, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800))
         XCTAssertEqual(zoomedOut.width(forPage: 612), 612 * 0.6 * PeekSizing.share + PeekSizing.sides, accuracy: 0.5,
                        "Read zoomed out, the peek narrows with the page.")
-        let tiny = PeekSizing(scale: 0.2, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: false)
+        let tiny = PeekSizing(scale: 0.2, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800))
         XCTAssertEqual(tiny.width(forPage: 612), PeekSizing.smallest.width)
         XCTAssertEqual(tiny.zoom(forPage: 612, width: PeekSizing.smallest.width), 0.2 * PeekSizing.share, accuracy: 0.001,
                        "A page narrower than the peek is centred at the peek's zoom, never enlarged.")
 
         let start = CGSize(width: 600, height: 300)
         XCTAssertEqual(roomy.resized(start, by: CGSize(width: 100, height: 50)), CGSize(width: 700, height: 350), "The corner follows the pointer.")
-        let popover = PeekSizing(scale: 1.5, opening: CGSize(width: 1200, height: 600), largest: CGSize(width: 1400, height: 800), centered: true)
-        XCTAssertEqual(popover.resized(start, by: CGSize(width: 100, height: 0)).width, 800, "A centred popover widens on both sides.")
+        XCTAssertEqual(roomy.resized(start, by: CGSize(width: 100, height: 0), widthGain: 2).width, 800, "A centred popover widens on both sides.")
         XCTAssertEqual(roomy.resized(start, by: CGSize(width: -1000, height: -1000)), PeekSizing.smallest)
         XCTAssertEqual(roomy.resized(start, by: CGSize(width: 5000, height: 5000)), CGSize(width: 1400, height: 800))
+    }
+
+    @MainActor
+    func testPeekIsResizedByTheEdgesThatMove() {
+        let host = NSView(frame: CGRect(x: 0, y: 0, width: 400, height: 300))
+        let area = PeekResizeAreaView(frame: host.bounds)
+        host.addSubview(area)
+        XCTAssertNil(area.hitTest(CGPoint(x: 395, y: 150)), "Still loading, the peek has no edges to drag.")
+        area.active = true
+        // The host is not flipped: y counts up from the bottom edge.
+        XCTAssertTrue(area.hitTest(CGPoint(x: 396, y: 150)) === area, "The right edge")
+        XCTAssertTrue(area.hitTest(CGPoint(x: 200, y: 4)) === area, "The bottom edge")
+        XCTAssertTrue(area.hitTest(CGPoint(x: 385, y: 15)) === area, "The bottom-right corner")
+        XCTAssertNil(area.hitTest(CGPoint(x: 200, y: 150)), "Clicks inside reach the peek")
+        XCTAssertNil(area.hitTest(CGPoint(x: 200, y: 296)), "Below its mention, the top edge stays the peek's own")
+        XCTAssertNil(area.hitTest(CGPoint(x: 4, y: 150)), "The left edge stays the peek's own")
+
+        // Above its mention, the bottom edge stays by the mention, and the top edge is the one that moves.
+        area.fromTop = true
+        XCTAssertTrue(area.hitTest(CGPoint(x: 200, y: 296)) === area, "The top edge")
+        XCTAssertTrue(area.hitTest(CGPoint(x: 385, y: 296)) === area, "The top-right corner, along the top")
+        XCTAssertTrue(area.hitTest(CGPoint(x: 396, y: 285)) === area, "The top-right corner, along the side")
+        XCTAssertNil(area.hitTest(CGPoint(x: 385, y: 285)), "The close button in the title bar's corner stays clickable")
+        XCTAssertTrue(area.hitTest(CGPoint(x: 396, y: 30)) === area, "The right edge, down to the bottom")
+        XCTAssertNil(area.hitTest(CGPoint(x: 200, y: 4)), "The bottom edge stays the peek's own")
+        XCTAssertEqual(area.edges, [.topRight, .right, .top])
+
+        var drags: [CGSize] = []
+        area.onDrag = { drags.append($0) }
+        area.drag(.right, by: CGSize(width: 30, height: 20))
+        area.drag(.bottom, by: CGSize(width: 30, height: 20))
+        area.drag(.bottomRight, by: CGSize(width: 30, height: 20))
+        area.drag(.top, by: CGSize(width: 30, height: -20))
+        area.drag(.topRight, by: CGSize(width: 30, height: -20))
+        XCTAssertEqual(drags, [CGSize(width: 30, height: 0), CGSize(width: 0, height: 20), CGSize(width: 30, height: 20),
+                               CGSize(width: 0, height: 20), CGSize(width: 30, height: 20)],
+                       "The side edge follows the pointer across, the bottom down, the top up, a corner both ways.")
+
+        let frame = PeekPreviewFrame()
+        let sizing = PeekSizing(scale: 1, opening: CGSize(width: 800, height: 400), largest: CGSize(width: 1000, height: 600))
+        frame.natural = CGSize(width: 500, height: 200)
+        frame.widthGain = { 2 }
+        frame.drag(by: CGSize(width: 10, height: 0), sizing: sizing)
+        frame.drag(by: CGSize(width: 40, height: 30), sizing: sizing)
+        XCTAssertEqual(frame.size, CGSize(width: 580, height: 230), "Each step of a drag counts from where the drag began.")
+        frame.endDrag()
+        frame.drag(by: CGSize(width: 0, height: 10), sizing: sizing)
+        XCTAssertEqual(frame.size, CGSize(width: 580, height: 240), "The next drag begins at the size the last one left.")
+    }
+
+    @MainActor
+    func testPeekViewKeepsItsLeftEdgeAsItIsResized() throws {
+        let view = NSView(frame: CGRect(x: 0, y: 0, width: 800, height: 600))
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = view
+        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame { window.setFrameOrigin(CGPoint(x: screen.minX + 20, y: screen.minY + 20)) }
+        defer { window.close() }
+        let panel = VSFloatingPanel()
+        defer { panel.close() }
+        panel.show(Color.clear.frame(width: 300, height: 100), anchor: CGRect(x: 400, y: 300, width: 1, height: 10), in: view,
+                   placement: .below, interactive: true, maxWidth: .greatestFiniteMagnitude, resizable: true)
+        let shown = try XCTUnwrap(window.childWindows?.first)
+        let right = window.frame.maxX - 4
+        // Its preview loaded wider than the room right of its line, the peek view is pushed in from the window's edge.
+        panel.fit(CGSize(width: 700, height: 100))
+        XCTAssertEqual(shown.frame.maxX, right, accuracy: 0.5)
+        panel.fit(CGSize(width: 500, height: 100))
+        XCTAssertEqual(shown.frame.minX, right - 700, accuracy: 0.5, "Narrowed, it keeps its left edge and its right edge follows the pointer.")
+        panel.fit(CGSize(width: 750, height: 100))
+        XCTAssertEqual(shown.frame.maxX, right, accuracy: 0.5, "Widened past the window, it moves left as far as it must to stay inside.")
     }
 
     @MainActor

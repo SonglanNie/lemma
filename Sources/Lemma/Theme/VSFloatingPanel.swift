@@ -22,6 +22,11 @@ final class VSFloatingPanel {
     var onClose: (() -> Void)?
 
     var isShown: Bool { panel?.isVisible == true }
+    /// Placed above its anchor, as a widget is when there is no room below it.
+    var isAbove: Bool {
+        guard let panel, let layout else { return false }
+        return panel.frame.minY >= layout.anchor.maxY
+    }
 
     /// Shows `content` next to `anchor` (in `view`'s coordinates). Interactive widgets take clicks and the keyboard and
     /// close on Escape or a click elsewhere; hovers let the pointer through. `takesKeyboard` makes the widget key at
@@ -109,12 +114,15 @@ final class VSFloatingPanel {
         fit(CGSize(width: panel.frame.width, height: height))
     }
 
-    /// Gives the widget its content's new size, as when the reader resizes a peek from its corner, and places it again.
+    /// Gives the widget its content's new size, as when the reader resizes a peek by its edges, and places it again.
     func fit(_ size: CGSize) {
         guard let panel, let layout, size.width > 0, size.height > 0 else { return }
         let size = CGSize(width: size.width, height: min(size.height, layout.maxHeight))
         guard abs(size.height - panel.frame.height) > 0.5 || abs(size.width - panel.frame.width) > 0.5 else { return }
-        let origin = Self.origin(for: size, anchor: layout.anchor, area: layout.area, placement: layout.placement)
+        var origin = Self.origin(for: size, anchor: layout.anchor, area: layout.area, placement: layout.placement)
+        // It keeps its left edge, as a window does, so that a peek pushed in from the window's edge resizes by its right
+        // edge rather than its left one; it moves left only as far as it must to stay inside the window.
+        origin.x = max(layout.area.minX + 4, min(panel.frame.minX, layout.area.maxX - size.width - 4))
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.contentView?.frame = NSRect(origin: .zero, size: size)
         panel.invalidateShadow()
