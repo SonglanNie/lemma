@@ -30,6 +30,23 @@ final class UpdatesTests: XCTestCase {
         XCTAssertNil(items.first { $0.id == "update.automaticDownloads" })
     }
 
+    /// An update Sparkle resumes without reading the feed (downloaded earlier, or set to install when Lemma quits) is set
+    /// aside when the feed lists a newer version: 3.4.0's appcast lists 3.4.0 and 3.3.1.
+    func testTheFeedsNewestVersionSupersedesAResumedUpdate() {
+        let appcast = """
+        <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel>
+        <item><title>3.3.1</title><sparkle:version>44</sparkle:version><sparkle:shortVersionString>3.3.1</sparkle:shortVersionString></item>
+        <item><title>3.4.0</title><sparkle:version>45</sparkle:version><sparkle:shortVersionString>3.4.0</sparkle:shortVersionString></item>
+        <item><title>3.0.0</title><enclosure url="https://example.com/Lemma.dmg" sparkle:version="37"/></item>
+        </channel></rss>
+        """
+        XCTAssertEqual(Updates.newestVersion(inAppcast: appcast), "45")
+        XCTAssertNil(Updates.newestVersion(inAppcast: "<rss><channel></channel></rss>"))
+        XCTAssertTrue(Updates.isOlder("44", than: "45"))
+        XCTAssertFalse(Updates.isOlder("45", than: "45"))
+        XCTAssertTrue(Updates.isOlder("9", than: "10"), "Build numbers compare as numbers, as Sparkle compares them.")
+    }
+
     func testVersionsCompareNumerically() {
         XCTAssertTrue(UpdateChecker.isNewer("3.10.0", than: "3.9.2"))
         XCTAssertTrue(UpdateChecker.isNewer("3.1", than: "3.0.9"))
