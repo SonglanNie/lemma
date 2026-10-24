@@ -20,8 +20,14 @@ final class VSFloatingPanel {
     /// Where the widget was asked to appear, kept so that a widget whose content grows can be placed again.
     private var layout: (anchor: CGRect, area: CGRect, placement: Placement, maxHeight: CGFloat)?
     var onClose: (() -> Void)?
+    /// Whether a click outside the widget closes it; a Shift-click on another reference opens a peek beside this one.
+    var closesOnClick: (NSEvent) -> Bool = { _ in true }
+    /// Kept open: clicks elsewhere and Escape in the reader's window leave it, and it stays where the reader moved it.
+    private(set) var isKept = false
 
     var isShown: Bool { panel?.isVisible == true }
+    /// Where the widget is on screen.
+    var frame: NSRect? { panel?.frame }
     /// Placed above its anchor, as a widget is when there is no room below it.
     var isAbove: Bool {
         guard let panel, let layout else { return false }
@@ -36,6 +42,7 @@ final class VSFloatingPanel {
                              width: CGFloat? = nil, maxWidth: CGFloat = 760, maxHeight: CGFloat = 560, takesKeyboard: Bool = false,
                              resizable: Bool = false) {
         close(notify: false)
+        isKept = false
         guard let window = view.window else { return }
         let root = content.environment(\.theme, ThemeManager.shared.colors)
         let hosting = NSHostingView(rootView: AnyView(root))
@@ -75,7 +82,7 @@ final class VSFloatingPanel {
         if takesKeyboard && mayTakeKeyboard { panel.makeKey() }
         if interactive {
             monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                if let self, let panel = self.panel, event.window !== panel { self.close() }
+                if let self, let panel = self.panel, event.window !== panel, self.closesOnClick(event) { self.close() }
                 return event
             } as Any)
             monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -119,6 +126,16 @@ final class VSFloatingPanel {
         guard let panel, let layout, size.width > 0, size.height > 0 else { return }
         let size = CGSize(width: size.width, height: min(size.height, layout.maxHeight))
         guard abs(size.height - panel.frame.height) > 0.5 || abs(size.width - panel.frame.width) > 0.5 else { return }
+        if isKept {
+            // Kept where the reader put it: it keeps its top-left corner, as a window does, with its title bar on screen.
+            let screen = panel.screen?.visibleFrame ?? layout.area
+            let origin = CGPoint(x: max(screen.minX, min(panel.frame.minX, screen.maxX - size.width)),
+                                 y: min(panel.frame.maxY, screen.maxY) - size.height)
+            panel.setFrame(NSRect(origin: origin, size: size), display: true)
+            panel.contentView?.frame = NSRect(origin: .zero, size: size)
+            panel.invalidateShadow()
+            return
+        }
         var origin = Self.origin(for: size, anchor: layout.anchor, area: layout.area, placement: layout.placement)
         // It keeps its left edge, as a window does, so that a peek pushed in from the window's edge resizes by its right
         // edge rather than its left one; it moves left only as far as it must to stay inside the window.
@@ -126,6 +143,23 @@ final class VSFloatingPanel {
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.contentView?.frame = NSRect(origin: .zero, size: size)
         panel.invalidateShadow()
+    }
+
+    /// Keeps the widget open while the reader works on: clicks elsewhere and Escape in the reader's window no longer
+    /// close it, only its own close button, or Escape typed in it.
+    func keep() {
+        guard !isKept else { return }
+        isKept = true
+        for monitor in monitors { NSEvent.removeMonitor(monitor) }
+        monitors.removeAll()
+    }
+
+    func orderFront() { panel?.orderFront(nil) }
+
+    /// Moves the widget by `offset` screen points, as a drag of its title bar does.
+    func move(by offset: CGSize) {
+        guard let panel else { return }
+        panel.setFrameOrigin(NSPoint(x: panel.frame.minX + offset.width, y: panel.frame.minY + offset.height))
     }
 
     func close(notify: Bool = true) {
@@ -171,19 +205,26 @@ struct VSPeekChrome<Actions: View, Content: View>: View {
     let icon: String
     let title: String
     var description: String = ""
+    /// The title bar's tooltip when it moves the peek.
+    var moveHelp = ""
     @ViewBuilder var actions: Actions
     @ViewBuilder var content: Content
+    /// Given, the title bar moves the peek, and this follows a drag that moved it.
+    var onMoved: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                Codicon(icon, size: 16).foregroundStyle(theme[.peekViewTitleLabelForeground])
-                Text(title).font(.ui(13)).foregroundStyle(theme[.peekViewTitleLabelForeground]).lineLimit(1)
-                if !description.isEmpty {
-                    Text("-").font(.ui(12)).foregroundStyle(theme[.peekViewTitleDescriptionForeground])
-                    Text(description).font(.ui(12)).foregroundStyle(theme[.peekViewTitleDescriptionForeground]).lineLimit(1)
+                HStack(spacing: 4) {
+                    Codicon(icon, size: 16).foregroundStyle(theme[.peekViewTitleLabelForeground])
+                    Text(title).font(.ui(13)).foregroundStyle(theme[.peekViewTitleLabelForeground]).lineLimit(1)
+                    if !description.isEmpty {
+                        Text("-").font(.ui(12)).foregroundStyle(theme[.peekViewTitleDescriptionForeground])
+                        Text(description).font(.ui(12)).foregroundStyle(theme[.peekViewTitleDescriptionForeground]).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
                 }
-                Spacer(minLength: 8)
+                .overlay { if let onMoved { WindowDragArea(onMoved: onMoved).help(moveHelp) } }
                 HStack(spacing: 2) { actions }
             }
             .padding(.leading, 12).padding(.trailing, 4)
@@ -197,5 +238,38 @@ struct VSPeekChrome<Actions: View, Content: View>: View {
         .overlay(alignment: .top) { Rectangle().fill(theme[.peekViewBorder]).frame(height: 2) }
         .overlay(alignment: .bottom) { Rectangle().fill(theme[.peekViewBorder]).frame(height: 2) }
         .overlay(Rectangle().stroke(theme[.peekViewBorder].opacity(0.6), lineWidth: 1))
+    }
+}
+
+/// Moves its window as the reader drags it, as a title bar does; `onMoved` follows a drag that moved it.
+struct WindowDragArea: NSViewRepresentable {
+    let onMoved: () -> Void
+
+    func makeNSView(context: Context) -> WindowDragAreaView { WindowDragAreaView() }
+    func updateNSView(_ view: WindowDragAreaView, context: Context) { view.onMoved = onMoved }
+}
+
+final class WindowDragAreaView: NSView {
+    var onMoved: () -> Void = {}
+    private var start: (pointer: NSPoint, origin: NSPoint)?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    /// The drag is this view's own: the window server would also move the window, by a different amount.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        start = (NSEvent.mouseLocation, window.frame.origin)
+    }
+    /// Follows the pointer on screen: the window moves under it, so a distance within the window would drift.
+    override func mouseDragged(with event: NSEvent) {
+        guard let start, let window else { return }
+        let pointer = NSEvent.mouseLocation
+        window.setFrameOrigin(NSPoint(x: start.origin.x + pointer.x - start.pointer.x, y: start.origin.y + pointer.y - start.pointer.y))
+    }
+    override func mouseUp(with event: NSEvent) {
+        guard let start, let window else { return }
+        self.start = nil
+        if hypot(window.frame.minX - start.origin.x, window.frame.minY - start.origin.y) > 0.5 { onMoved() }
     }
 }

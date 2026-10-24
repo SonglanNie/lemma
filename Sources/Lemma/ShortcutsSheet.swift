@@ -15,6 +15,7 @@ struct ShortcutsSheet: View {
                        ("⌘W", "Close the book's tab"), ("⌘D", "Bookmark the page"), ("⌘0  ⌘+  ⌘−", "Fit page · Zoom in · Zoom out")]),
         ("References and definitions", [("Hover", "Preview an underlined reference without clicking"),
                                         ("Click", "Peek at an underlined reference: “(2.3)”, “Figure 2.1”, “Rudin (1976)”"),
+                                        ("⇧-click", "Open another peek beside the ones open; drag a peek's title bar to keep it in sight"),
                                         ("⌥-click", "Open a result or a page reference in the side editor"),
                                         ("⌘-click", "Look a term up in the book's index and your glossary"), ("⇧⌘L", "Look up a typed term (for scans)"),
                                         ("Right-click", "Study actions, Find All References, Open to the Side")]),

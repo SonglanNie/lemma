@@ -20,9 +20,21 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// The preview's size, shared by the peek and the edges it is resized from.
     let frame = PeekPreviewFrame()
     private weak var store: StudyStore?
-    private let requestID: UUID
+    let requestID: UUID
+    /// The reference it previews: Shift-clicking it again brings this peek forward rather than opening another.
+    let key: ReferenceKey
     /// The mention the popover points at, on screen.
     private var anchor: CGRect?
+    /// Kept open while the reader works on (moved, dragged away, or opened or left open by a Shift-click): clicks
+    /// elsewhere, other peeks and scrolling leave it until its close button.
+    private(set) var isKept = false
+    /// Follows the peek being kept, and its closing.
+    var onKept: (() -> Void)?
+    var onClosed: (() -> Void)?
+    /// Places a peek opened beside others as its preview loads and the peek takes its size, until the reader moves or
+    /// resizes it.
+    var autoPlace: (() -> Void)?
+    private var monitors: [Any] = []
 
     var isShown: Bool { popover.isShown || panel.isShown }
     func close() {
@@ -30,8 +42,28 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
         panel.close()
     }
 
+    /// Keeps the peek open beside the reader's work, until its close button.
+    func keep() {
+        guard !isKept else { return }
+        isKept = true
+        frame.kept = true
+        panel.keep()
+        removeMonitors()
+        onKept?()
+    }
+
+    func bringForward() {
+        panel.orderFront()
+        if popover.isShown { popover.contentViewController?.view.window?.orderFront(nil) }
+    }
+
+    private func removeMonitors() {
+        for monitor in monitors { NSEvent.removeMonitor(monitor) }
+        monitors.removeAll()
+    }
+
     init(store: StudyStore, request: ReferencePeekRequest, sizing: PeekSizing) {
-        self.store = store; self.requestID = request.id
+        self.store = store; self.requestID = request.id; self.key = request.mention.key
         super.init()
         let pane = ReferencePeekPane(store: store, request: request, sizing: sizing, frame: frame).tint(.lemmaOlive)
             .fixedSize()
@@ -46,7 +78,9 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
         popover.contentViewController = controller
         // The popover opens at its preview's size: placed at a size it then outgrew, it hung off the screen's edge.
         popover.contentSize = controller.sizeThatFits(in: CGSize(width: 10_000, height: 10_000))
-        popover.behavior = .transient
+        // It closes itself on a click elsewhere (show(relativeTo:of:)): a transient popover would close on the Shift-click
+        // that opens another peek beside it, before the click reached the page.
+        popover.behavior = .applicationDefined
         popover.animates = false
         popover.delegate = self
         // Anchored, the popover is centred on its mention, so its right edge moves half as far as its width changes.
@@ -54,7 +88,10 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
         panel.onClose = { [weak self] in
             guard let self else { return }
             if self.store?.referencePeek?.id == self.requestID { self.store?.referencePeek = nil }
+            self.onClosed?()
         }
+        panel.closesOnClick = { !$0.modifierFlags.contains(.shift) }
+        frame.close = { [weak self] in self?.close() }
     }
 
     /// Shows the popover under its mention, `rect` in `view`, or above it when there is no room below.
@@ -62,6 +99,21 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
         anchor = view.window?.convertToScreen(view.convert(rect, to: nil))
         popover.show(relativeTo: rect, of: view, preferredEdge: .minY)
         placeEdges()
+        // As a transient popover, it closes on a click elsewhere and on Escape in the reader's window, unless it is kept;
+        // a Shift-click opens another peek beside it.
+        let window = view.window
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self, !self.isKept, self.popover.isShown, event.window !== self.popover.contentViewController?.view.window,
+                  !event.modifierFlags.contains(.shift) else { return event }
+            self.close()
+            return event
+        } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53, let self, !self.isKept, self.popover.isShown, let window, event.window === window,
+                  NSApp.modalWindow == nil, window.attachedSheet == nil, !(window.firstResponder is NSText) else { return event }
+            self.close()
+            return nil
+        } as Any)
     }
 
     /// The popover follows its content as the preview loads and as the reader resizes it. Dragged away, it keeps its top
@@ -81,6 +133,7 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     func fitPanel(_ size: CGSize) {
         panel.fit(size)
         placeEdges()
+        if frame.resized == nil { autoPlace?() }
     }
 
     /// A peek above its mention keeps the edge next to the mention, so the reader resizes it by its top edge, the one
@@ -100,17 +153,25 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// Dragged away from its mention, the peek becomes a window of its own that stays open while the reader works on.
     func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
 
-    func popoverDidDetach(_ popover: NSPopover) { placeEdges() }
+    func popoverDidDetach(_ popover: NSPopover) { keep(); placeEdges() }
 
     func popoverDidClose(_ notification: Notification) {
+        removeMonitors()
         if store?.referencePeek?.id == requestID { store?.referencePeek = nil }
+        onClosed?()
     }
 }
 
 @MainActor
 extension RegionPDFView {
-    func presentReferencePeek(_ request: ReferencePeekRequest, store: StudyStore) {
+    /// Opens the peek at its mention. A kept peek (`keep`, a Shift-click) opens beside the peeks already open and keeps
+    /// the one open before it, so several stay in sight; the same reference again brings its peek forward.
+    func presentReferencePeek(_ request: ReferencePeekRequest, store: StudyStore, keep: Bool = false) {
         guard window?.isVisible == true else { return }
+        if keep {
+            if let current = referencePopover, current.isShown { current.keep() }
+            if let open = keptReferencePeeks.first(where: { $0.key == request.mention.key && $0.isShown }) { open.bringForward(); return }
+        }
         dismissReferencePeek()
         dismissDefinitionLookup()
         var anchor = CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
@@ -121,6 +182,15 @@ extension RegionPDFView {
         let vscode = ThemeManager.shared.style == .vscode
         let sizing = PeekSizing(reading: self, popover: !vscode)
         let presentation = ReferencePeekPopover(store: store, request: request, sizing: sizing)
+        presentation.onKept = { [weak self, weak presentation, weak store] in
+            guard let self, let presentation else { return }
+            if self.referencePopover === presentation { self.referencePopover = nil }
+            if !self.keptReferencePeeks.contains(where: { $0 === presentation }) { self.keptReferencePeeks.append(presentation) }
+            if store?.referencePeek?.id == presentation.requestID { store?.referencePeek = nil }
+        }
+        presentation.onClosed = { [weak self, weak presentation] in
+            self?.keptReferencePeeks.removeAll { $0 === presentation || !$0.isShown }
+        }
         referencePopover = presentation
         if vscode {
             // VS Code's peek view: under the line, with a title bar and the peek frame, as wide as its preview. It keeps
@@ -130,11 +200,11 @@ extension RegionPDFView {
             let key = request.mention.key
             let page = store.references?.knownTarget(key).map { store.pageText($0.pageIndex) } ?? ""
             let chrome = VSPeekChrome(icon: Self.peekIcon(key.kind), title: key.kind == .citation ? (key.name ?? key.title) : key.spokenTitle,
-                                      description: page) {
+                                      description: page, moveHelp: Self.keepHelp) {
                 VSIconButton(icon: "close", help: "Close (Escape)") { presentation.close() }
             } content: {
                 ReferencePeekPane(store: store, request: request, sizing: sizing, frame: presentation.frame, chromeless: true).padding(12)
-            }
+            } onMoved: { [weak presentation] in presentation?.autoPlace = nil; presentation?.keep() }
             // The panel follows the peek's size as its preview loads and as the reader resizes it, after the layout pass
             // that measured it.
             .fixedSize()
@@ -146,10 +216,44 @@ extension RegionPDFView {
             presentation.panel.show(chrome, anchor: line, in: self, placement: .below, interactive: true,
                                     maxWidth: .greatestFiniteMagnitude, maxHeight: room, resizable: true)
             presentation.placeEdges()
+            if keep {
+                presentation.keep()
+                presentation.autoPlace = { [weak self, weak presentation] in
+                    if let self, let presentation { self.placeBesideKeptPeeks(presentation) }
+                }
+                placeBesideKeptPeeks(presentation)
+            }
             return
         }
         presentation.show(relativeTo: anchor, of: self)
+        if keep { presentation.keep() }
     }
+
+    /// A peek opened beside others goes where it covers none of them: right of the one it would cover, else left of it,
+    /// below or above it, inside the window. Failing that, it steps down and right of it, so that each title bar shows.
+    private func placeBesideKeptPeeks(_ presentation: ReferencePeekPopover) {
+        guard let window, let mine = presentation.panel.frame else { return }
+        let others = keptReferencePeeks.filter { $0 !== presentation && $0.isShown }.compactMap(\.panel.frame)
+        guard let covered = others.first(where: { $0.intersects(mine) }) else { return }
+        let screen = window.screen?.visibleFrame ?? .infinite
+        let area = window.convertToScreen(window.contentLayoutRect).intersection(screen)
+        let gap: CGFloat = 8
+        let candidates = [CGPoint(x: covered.maxX + gap, y: covered.maxY - mine.height), CGPoint(x: covered.minX - gap - mine.width, y: covered.maxY - mine.height),
+                          CGPoint(x: covered.minX, y: covered.minY - gap - mine.height), CGPoint(x: covered.minX, y: covered.maxY + gap)]
+        var target: CGPoint
+        if let free = candidates.map({ CGRect(origin: $0, size: mine.size) }).first(where: { rect in
+            area.contains(rect) && !others.contains { $0.intersects(rect) }
+        }) {
+            target = free.origin
+        } else {
+            // Its top stays below the other's title bar, so both titles show, even if its bottom must leave the window.
+            target = CGPoint(x: max(area.minX, min(covered.minX + 24, area.maxX - mine.width)), y: covered.maxY - 30 - mine.height)
+        }
+        presentation.panel.move(by: CGSize(width: target.x - mine.minX, height: target.y - mine.minY))
+    }
+
+    /// What moving or Shift-clicking does, said where the reader would try it.
+    static let keepHelp = "Drag to move it; it then stays open. ⇧-click another reference to open it beside this one."
 
     /// The peek's title icon, as the Go to list shows each kind.
     static func peekIcon(_ kind: ReferenceKind) -> String {
@@ -170,6 +274,13 @@ extension RegionPDFView {
         referencePopover?.panel.onClose = nil
         referencePopover?.close()
         referencePopover = nil
+    }
+
+    /// Closes the peeks kept open: they belong to the book on the page, and to this view's window.
+    func closeKeptReferencePeeks() {
+        let kept = keptReferencePeeks
+        keptReferencePeeks.removeAll()
+        for peek in kept { peek.onClosed = nil; peek.close() }
     }
 }
 
@@ -252,6 +363,10 @@ final class PeekPreviewFrame {
     @ObservationIgnored var widthGain: () -> CGFloat = { 1 }
     /// Resized by its top edge, as a peek above its mention is; by its bottom edge otherwise.
     var fromTop = false
+    /// Kept open beside the reader's work: its buttons then leave it open.
+    var kept = false
+    /// Closes the peek.
+    @ObservationIgnored var close: () -> Void = {}
     @ObservationIgnored private var start: CGSize?
 
     var size: CGSize? { resized ?? natural }
@@ -310,9 +425,10 @@ struct ReferencePeekPane: View {
                     }
                 }
                 Spacer()
-                Button { store.referencePeek = nil } label: { Image(systemName: "xmark") }
+                Button { frame.close() } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless).keyboardShortcut(.cancelAction).accessibilityLabel("Close reference preview")
             }
+            .help(frame.kept ? "" : "Drag it away to keep it open. ⇧-click another reference to open it beside this one.")
             }
             content
             if key.kind == .citation, let entry = store.analysis?.bibliographyEntry(key) {
@@ -333,22 +449,22 @@ struct ReferencePeekPane: View {
                 PaperLookupView(store: store, entry: entry)
             }
             HStack(spacing: 14) {
-                Button(key.kind == .citation ? "Find Citations" : "Find All References") { store.referencePeek = nil; store.showReferences(to: key) }
+                Button(key.kind == .citation ? "Find Citations" : "Find All References") { leave(); store.showReferences(to: key) }
                     .help("List the places in this book that cite \(key.title) · in the panel below")
-                Button("Pin") { if let target { store.referencePeek = nil; store.pinReference(target) } }
+                Button("Pin") { if let target { leave(); store.pinReference(target) } }
                     .disabled(target == nil).help("Keep this passage in Context")
                 if key.kind == .equation {
-                    Button("LaTeX…") { if let target { store.referencePeek = nil; store.readFormula(target) } }.disabled(target == nil)
+                    Button("LaTeX…") { if let target { leave(); store.readFormula(target) } }.disabled(target == nil)
                         .help("Read this formula's LaTeX locally, with the original beside the transcription")
                 }
                 if [.equation, .algorithm, .figure, .table].contains(key.kind) {
-                    Button("Lab") { if let target { store.referencePeek = nil; store.sendTargetToLab(target) } }
+                    Button("Lab") { if let target { leave(); store.sendTargetToLab(target) } }
                         .disabled(target == nil).help("Try \(key.spokenTitle) in a Python notebook beside the page")
                 }
                 Spacer()
-                Button("Open to the Side") { if let target { store.referencePeek = nil; store.openToSide(target) } }
+                Button("Open to the Side") { if let target { leave(); store.openToSide(target) } }
                     .disabled(target == nil).help("Keep it in the side editor beside your page · ⌥-click a reference")
-                Button("Go to") { if let target { store.referencePeek = nil; store.goToReference(target) } }
+                Button("Go to") { if let target { leave(); store.goToReference(target) } }
                     .keyboardShortcut(.defaultAction).disabled(target == nil || isDefinitionItself)
                     .help("Move the reader there. Back returns to this page · ⌥⌘←")
             }.font(.callout).buttonStyle(.borderless)
@@ -383,6 +499,9 @@ struct ReferencePeekPane: View {
             }.frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         }
     }
+
+    /// A button's action closes the peek, unless the reader kept it open.
+    private func leave() { if !frame.kept { frame.close() } }
 
     private var searchDescription: String {
         if let range = store.references?.chapterRange(for: key) {

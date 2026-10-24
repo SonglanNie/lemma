@@ -185,6 +185,11 @@ extension StudyStore {
         state["arxivSearching"] = arxivSearching
         state["arxivSearchError"] = arxivSearchError
         state["referencePeek"] = referencePeek?.mention.key.title
+        // Peeks kept open beside the reader's work: their reference and screen frame (bottom-left origin).
+        state["keptPeeks"] = (reader.view?.keptReferencePeeks ?? []).filter(\.isShown).map { peek -> [String: Any] in
+            let frame = peek.panel.frame ?? peek.popover.contentViewController?.view.window?.frame ?? .zero
+            return ["reference": peek.key.title, "frame": [frame.minX, frame.minY, frame.width, frame.height].map(Double.init)]
+        }
         func resizeArea(in view: NSView) -> PeekResizeAreaView? {
             (view as? PeekResizeAreaView) ?? view.subviews.lazy.compactMap { resizeArea(in: $0) }.first
         }
@@ -318,7 +323,14 @@ extension StudyStore {
             let kind = info["kind"].flatMap(ReferenceKind.init(rawValue:))
             guard let mention = references?.mentions(onPage: pageIndex).first(where: { !$0.isDefinition && (kind == nil || $0.key.kind == kind) && (info["number"] == nil || $0.key.number == info["number"]) })
             else { throw QAHooks.QAError.missing("mention on this page") }
-            peekReference(mention, pageIndex: pageIndex)
+            // keep=1 opens it as a Shift-click does, beside the peeks already open.
+            peekReference(mention, pageIndex: pageIndex, keep: info["keep"] == "1")
+        case "peekMove":
+            // The open peek moved by its title bar, dx, dy screen points (up positive), as the reader drags it: it stays open.
+            guard let view = reader.view, let peek = view.referencePopover ?? view.keptReferencePeeks.last else { throw QAHooks.QAError.missing("peek") }
+            peek.autoPlace = nil
+            peek.panel.move(by: CGSize(width: Double(info["dx"] ?? "") ?? 0, height: Double(info["dy"] ?? "") ?? 0))
+            peek.keep()
         case "peekResize":
             // The open peek's edge (edge=right|top|bottom|topRight|bottomRight, its corner by default) dragged by dx, dy
             // screen points (down positive), as the reader drags it.
@@ -375,6 +387,17 @@ extension StudyStore {
         case "appearance":
             NSApp.appearance = info["value"] == "light" ? NSAppearance(named: .aqua) : info["value"] == "dark" ? NSAppearance(named: .darkAqua) : nil
         case "open": if let path = info["path"] { open(URL(fileURLWithPath: path)) }
+        case "sidebarSweep":
+            // The Explorer's width moved from= to= (points) over ms= milliseconds at 60 steps a second and back back=1, as
+            // the reader drags its sash: record it with videoStart/videoStop.
+            let from = Double(info["from"] ?? "") ?? 400, to = Double(info["to"] ?? "") ?? 180
+            let steps = max(1, Int((Double(info["ms"] ?? "") ?? 1500) / 1000 * 60))
+            let sweep = (0...steps).map { from + (to - from) * Double($0) / Double(steps) }
+            for width in sweep + (info["back"] == "1" ? sweep.reversed() : []) {
+                workbenchLayout.sidebarWidth = width
+                try await Task.sleep(for: .milliseconds(16))
+            }
+            saveWorkbench()
         case "tab": if let id = tabs.first(where: { $0.title == info["title"] })?.id { activateTab(id) }
         case "closeTab": if let id = tabs.first(where: { $0.title == info["title"] })?.id { closeTab(id) }
         case "selectNote":

@@ -98,7 +98,9 @@ final class ReaderController {
     var recallMaskRegions: [PageRegion] = [] { didSet { view?.updateOverlay() } }
     var onSelectNote: ((UUID) -> Void)?
     var onLookup: ((Int, CGRect, String) -> Void)?
-    var onReference: ((PageMention, Int) -> Void)?
+    /// A click on a reference: its mention, its page, and whether it was a Shift-click, which opens the peek beside
+    /// those already open and keeps them all open.
+    var onReference: ((PageMention, Int, Bool) -> Void)?
     /// ⌥-click on a reference: opens it in the side editor instead of peeking at it.
     var onReferenceToSide: ((PageMention, Int) -> Void)?
     /// Starts a margin note beside a line (double-click in the margin, or the context menu).
@@ -567,6 +569,8 @@ final class RegionPDFView: PDFView {
     }
     var definitionPopover: DefinitionLookupPopover?
     var referencePopover: ReferencePeekPopover?
+    /// Peeks kept open beside the reader's work: moved, dragged away or Shift-clicked.
+    var keptReferencePeeks: [ReferencePeekPopover] = []
     var quickAskPopover: QuickAskPopover?
     var marginNotePopover: MarginNotePopover?
     /// Previews a reference while the pointer rests on it.
@@ -574,7 +578,7 @@ final class RegionPDFView: PDFView {
     /// Says what a symbol stands for while the pointer rests on it.
     lazy var symbolHover = SymbolHoverController(view: self)
     private(set) var hoveredSymbol: SymbolHit?
-    private var pendingReference: (mention: PageMention, pageIndex: Int, start: CGPoint, toSide: Bool)?
+    private var pendingReference: (mention: PageMention, pageIndex: Int, start: CGPoint, toSide: Bool, keep: Bool)?
     private var referenceDragged = false
     private(set) var hoveredReference: (mention: PageMention, pageIndex: Int)?
     private var referenceTracking: NSTrackingArea?
@@ -583,6 +587,17 @@ final class RegionPDFView: PDFView {
     private(set) var dragRectangle: CGRect?
     private var drawingStroke: InkStroke?
     private lazy var selectionOverlay = RegionSelectionOverlay(frame: bounds)
+
+    /// A Shift-click with text selected extends the selection, as anywhere on the page, even over a reference.
+    private func extendsSelection(_ modifiers: NSEvent.ModifierFlags) -> Bool {
+        modifiers.contains(.shift) && currentSelection?.string?.isEmpty == false
+    }
+
+    /// Peeks are child windows of the reader's window: they leave with the reader.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { dismissReferencePeek(); closeKeptReferencePeeks() }
+        super.viewWillMove(toWindow: newWindow)
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let target = super.hitTest(point) else { return nil }
@@ -599,9 +614,10 @@ final class RegionPDFView: PDFView {
            controller?.onMarginNote != nil, marginLine(at: local) != nil { return self }
         // A click on a line number selects the line, as in an editor.
         if event?.type == .leftMouseDown, selectionOverlay.lineNumberHit(at: local) != nil { return self }
-        // References behave like links: a plain click opens the peek rather than starting a selection, and ⌥-click
-        // opens them beside the page. Shift and Control clicks keep PDFKit's selection behaviour.
-        if NSEvent.modifierFlags.isDisjoint(with: [.shift, .control]), referenceHit(at: local) != nil { return self }
+        // References behave like links: a plain click opens the peek rather than starting a selection, ⌥-click opens
+        // them beside the page and ⇧-click opens another peek. Control clicks, and Shift-clicks that extend a selection,
+        // keep PDFKit's selection behaviour.
+        if NSEvent.modifierFlags.isDisjoint(with: [.control]), !extendsSelection(NSEvent.modifierFlags), referenceHit(at: local) != nil { return self }
         return target
     }
 
@@ -766,7 +782,7 @@ final class RegionPDFView: PDFView {
     func openRulerReference() {
         guard let controller, let line = controller.rulerLine, let index = controller.references else { return }
         let mentions = index.mentions(onPage: line.pageIndex).filter { !$0.isDefinition && $0.rects.contains { $0.intersects(line.rect.insetBy(dx: 0, dy: 1)) } }
-        if let first = mentions.min(by: { ($0.rects.first?.minX ?? 0) < ($1.rects.first?.minX ?? 0) }) { controller.onReference?(first, line.pageIndex) }
+        if let first = mentions.min(by: { ($0.rects.first?.minX ?? 0) < ($1.rects.first?.minX ?? 0) }) { controller.onReference?(first, line.pageIndex, false) }
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -844,8 +860,8 @@ final class RegionPDFView: PDFView {
             controller?.onLookup?(document.index(for: page), word.bounds(for: page), text)
             return
         }
-        if controller?.regionMode != true, controller?.inkMode != true, event.modifierFlags.isDisjoint(with: [.shift, .control]),
-           let hit = referenceHit(at: convert(event.locationInWindow, from: nil)) {
+        if controller?.regionMode != true, controller?.inkMode != true, event.modifierFlags.isDisjoint(with: [.control]),
+           !extendsSelection(event.modifierFlags), let hit = referenceHit(at: convert(event.locationInWindow, from: nil)) {
             window?.makeFirstResponder(self)
             let local = convert(event.locationInWindow, from: nil)
             if event.clickCount > 1 {
@@ -855,7 +871,8 @@ final class RegionPDFView: PDFView {
                 return
             }
             clearSelection()
-            pendingReference = (hit.mention, hit.pageIndex, local, event.modifierFlags.contains(.option)); referenceDragged = false
+            pendingReference = (hit.mention, hit.pageIndex, local, event.modifierFlags.contains(.option), event.modifierFlags.contains(.shift))
+            referenceDragged = false
             return
         }
         if let controller, controller.inkMode {
@@ -914,7 +931,7 @@ final class RegionPDFView: PDFView {
             referenceDragged = false
             if !dragged {
                 if pending.toSide, let toSide = controller?.onReferenceToSide { toSide(pending.mention, pending.pageIndex) }
-                else { controller?.onReference?(pending.mention, pending.pageIndex) }
+                else { controller?.onReference?(pending.mention, pending.pageIndex, pending.keep) }
             }
             return
         }
@@ -1272,6 +1289,7 @@ struct PDFReaderSurface: NSViewRepresentable {
         if view.document !== document {
             view.dismissDefinitionLookup()
             view.dismissReferencePeek()
+            view.closeKeptReferencePeeks()
             view.dismissQuickAsk()
             // A margin note's editor belongs to the book it was opened on; left open, typing would go nowhere.
             view.dismissMarginNote()

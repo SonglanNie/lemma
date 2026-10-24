@@ -311,7 +311,7 @@ final class StudyStore {
         reader.onInk = { [weak self] stroke in self?.addInk(stroke, undoManager: self?.reader.view?.undoManager) }
         reader.onEraseInk = { [weak self] id in self?.removeInk(id: id, undoManager: self?.reader.view?.undoManager) }
         reader.onLookup = { [weak self] page, region, text in self?.lookupDefinition(text, pageIndex: page, region: region) }
-        reader.onReference = { [weak self] mention, page in self?.peekReference(mention, pageIndex: page) }
+        reader.onReference = { [weak self] mention, page, keep in self?.peekReference(mention, pageIndex: page, keep: keep) }
         reader.onReferenceToSide = { [weak self] mention, page in self?.openReferenceToSide(mention, pageIndex: page) }
         reader.onContextAction = { [weak self] action in self?.perform(action) }
         reader.onShowReferences = { [weak self] key in self?.showReferences(.object(key)) }
@@ -1088,11 +1088,15 @@ final class StudyStore {
         if let definitionLookup { reader.view?.presentDefinitionLookup(definitionLookup, store: self) }
     }
 
-    func peekReference(_ mention: PageMention, pageIndex: Int) {
+    /// Opens the reference's peek. `keep` (a Shift-click) opens it beside the peeks already open, all kept open until
+    /// the reader closes them.
+    func peekReference(_ mention: PageMention, pageIndex: Int, keep: Bool = false) {
         guard let workspace else { return }
         definitionLookup = nil
-        referencePeek = ReferencePeekRequest(workspaceID: workspace.id, mention: mention, pageIndex: pageIndex)
-        if let referencePeek { reader.view?.presentReferencePeek(referencePeek, store: self) }
+        let request = ReferencePeekRequest(workspaceID: workspace.id, mention: mention, pageIndex: pageIndex)
+        if keep { reader.view?.presentReferencePeek(request, store: self, keep: true); return }
+        referencePeek = request
+        reader.view?.presentReferencePeek(request, store: self)
     }
 
     func goToReference(_ target: ReferenceTarget) {

@@ -156,6 +156,105 @@ final class ReferenceFlowTests: XCTestCase {
         XCTAssertEqual(store.reader.pageNumber, 3)
     }
 
+    /// A Shift-click opens a peek beside the one open, and both stay open (#remarks: two movable previews at once);
+    /// a plain click replaces only the peek that was not kept; the reader leaving its window closes them all.
+    @MainActor
+    func testShiftClickedPeeksStayOpenBesideEachOther() async throws {
+        _ = NSApplication.shared
+        let previous = ThemeManager.shared.style
+        ThemeManager.shared.style = .vscode
+        defer { ThemeManager.shared.style = previous }
+        let fixture = try Fixture(hosted: true)
+        defer { fixture.close() }
+        let store = fixture.store
+        try await Task.sleep(for: .milliseconds(150))
+        let index = try XCTUnwrap(store.references)
+        store.reader.goToPage(3); store.reader.updatePage()
+        var seen = Set<ReferenceKey>()
+        let mentions = index.mentions(onPage: 2).filter { !$0.isDefinition && seen.insert($0.key).inserted }
+        XCTAssertGreaterThanOrEqual(mentions.count, 2, "The sample page cites at least two references.")
+        let view = try XCTUnwrap(store.reader.view)
+
+        store.peekReference(mentions[0], pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        let first = try XCTUnwrap(view.referencePopover)
+        XCTAssertFalse(first.isKept)
+        store.peekReference(mentions[1], pageIndex: 2, keep: true)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertNil(view.referencePopover, "Both peeks are kept: none is the passing one.")
+        XCTAssertEqual(view.keptReferencePeeks.map(\.key), [mentions[0].key, mentions[1].key])
+        XCTAssertTrue(view.keptReferencePeeks.allSatisfy { $0.isShown && $0.isKept && $0.panel.isKept })
+        XCTAssertNil(store.referencePeek, "No passing peek is open.")
+        let frames = view.keptReferencePeeks.compactMap(\.panel.frame)
+        XCTAssertEqual(frames.count, 2)
+        XCTAssertFalse(frames[1].intersects(frames[0]) && abs(frames[1].maxY - frames[0].maxY) < 20,
+                       "The second peek opens beside the first, or at least below its title bar: \(frames)")
+
+        // Shift-clicking a reference already open brings its peek forward instead of opening it twice.
+        store.peekReference(mentions[1], pageIndex: 2, keep: true)
+        XCTAssertEqual(view.keptReferencePeeks.count, 2)
+
+        // A plain click opens a passing peek; what clears it (another popup, Escape) leaves the kept ones.
+        store.peekReference(mentions[0], pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(view.referencePopover?.isShown == true)
+        store.referencePeek = nil
+        XCTAssertNil(view.referencePopover)
+        XCTAssertEqual(view.keptReferencePeeks.filter(\.isShown).count, 2, "Kept peeks outlive the passing one.")
+
+        // Moved by its title bar, a passing peek becomes a kept one where the reader put it.
+        store.peekReference(mentions[0], pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        let moved = try XCTUnwrap(view.referencePopover)
+        let before = try XCTUnwrap(moved.panel.frame)
+        moved.autoPlace = nil; moved.panel.move(by: CGSize(width: 40, height: -30)); moved.keep()
+        XCTAssertNil(view.referencePopover)
+        XCTAssertEqual(view.keptReferencePeeks.count, 3)
+        moved.panel.fit(CGSize(width: before.width + 50, height: before.height + 20))
+        let after = try XCTUnwrap(moved.panel.frame)
+        XCTAssertEqual(after.minX, before.minX + 40, accuracy: 0.5, "Resized, a kept peek keeps its left edge…")
+        XCTAssertEqual(after.maxY, before.maxY - 30, accuracy: 0.5, "…and its top edge, where the reader put it.")
+
+        // Its own close button closes one kept peek.
+        moved.frame.close()
+        XCTAssertEqual(view.keptReferencePeeks.count, 2)
+        XCTAssertFalse(moved.isShown)
+
+        // Peeks are the reader's window's: the reader leaving it closes them.
+        fixture.window.contentView = NSView()
+        XCTAssertTrue(view.keptReferencePeeks.isEmpty)
+        XCTAssertEqual(NSApp.windows.filter { $0.isVisible && $0.parent === fixture.window }.count, 0, "No peek is left behind.")
+    }
+
+    @MainActor
+    func testClassicPopoverStaysOpenBesideAShiftClickedOne() async throws {
+        _ = NSApplication.shared
+        let previous = ThemeManager.shared.style
+        ThemeManager.shared.style = .classic
+        defer { ThemeManager.shared.style = previous }
+        let fixture = try Fixture(hosted: true)
+        defer { fixture.close() }
+        let store = fixture.store
+        try await Task.sleep(for: .milliseconds(150))
+        let index = try XCTUnwrap(store.references)
+        store.reader.goToPage(3); store.reader.updatePage()
+        var seen = Set<ReferenceKey>()
+        let mentions = index.mentions(onPage: 2).filter { !$0.isDefinition && seen.insert($0.key).inserted }
+        let view = try XCTUnwrap(store.reader.view)
+        store.peekReference(mentions[0], pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(view.referencePopover?.popover.behavior, .applicationDefined, "It closes itself, so a Shift-click can keep it.")
+        store.peekReference(mentions[1], pageIndex: 2, keep: true)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(view.keptReferencePeeks.count, 2)
+        XCTAssertTrue(view.keptReferencePeeks.allSatisfy { $0.popover.isShown }, "Both popovers are open, each at its mention.")
+        view.keptReferencePeeks.last?.frame.close()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(view.keptReferencePeeks.count, 1)
+        view.closeKeptReferencePeeks()
+        XCTAssertTrue(view.keptReferencePeeks.isEmpty)
+    }
+
     @MainActor
     func testClassicStyleKeepsTheReferencePopover() async throws {
         _ = NSApplication.shared
