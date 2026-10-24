@@ -395,6 +395,40 @@ final class WorkbenchStyleTests: XCTestCase {
     }
 
     @MainActor
+    func testTabsKeepTheirOwnWidthWhateverWidthTheBarOffers() async throws {
+        // Resizing the side bar, the tabs jumped between 280 points and their own width from one frame to the next: in an
+        // HStack each took the width proposed to it, which the bar's scroll view gives in some layout passes only.
+        final class Widths { var tabs: [String: CGFloat] = [:] }
+        let titles = ["ISLP", "The mathematics of poker", "A Collection of Static Arbitrage Problems for Quantitative Interviews"]
+        func tabs(_ widths: Widths) -> some View {
+            VSTabRow {
+                ForEach(titles, id: \.self) { title in
+                    VSTab(icon: "file-pdf", title: title, active: title == titles[1], select: {}, close: {})
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { widths.tabs[title] = $0 }
+                }
+            }
+        }
+        // The bar's whole width offered to the tabs, and none, as the scroll view proposes in its other passes.
+        let offered = Widths(), scrolled = Widths()
+        let view = VStack(spacing: 0) {
+            tabs(offered).frame(width: 1200, alignment: .leading)
+            ScrollView(.horizontal) { tabs(scrolled) }.frame(width: 1200)
+        }
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1200, height: 100), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView = NSHostingView(rootView: view.environment(\.theme, ThemeManager.shared.colors))
+        window.orderFront(nil)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(offered.tabs.count, 3)
+        XCTAssertEqual(offered.tabs, scrolled.tabs, "A tab is as wide whatever width the bar offers.")
+        XCTAssertEqual(try XCTUnwrap(offered.tabs[titles[0]]), 120, accuracy: 0.5, "A short title's tab is 120 points, not 280.")
+        let poker = try XCTUnwrap(offered.tabs[titles[1]])
+        XCTAssertTrue(poker > 120 && poker < 280, "A tab fits its title: \(poker)")
+        XCTAssertEqual(try XCTUnwrap(offered.tabs[titles[2]]), 280, accuracy: 0.5, "A long title is cut at 280 points.")
+    }
+
+    @MainActor
     func testMenusOpenRightUnderTheirControlInFlippedAndUnflippedViews() throws {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)

@@ -33,7 +33,7 @@ private struct SideTabStrip: View {
             GeometryReader { geometry in
             ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
+                VSTabRow {
                     ForEach(store.sideEditors) { editor in
                         VSTab(icon: editor.codicon, title: store.sideTitle(editor), active: editor.id == store.activeSideEditor?.id,
                               badge: badge(editor), select: { store.activateSideEditor(editor.id) }, close: { store.closeSideEditor(editor.id) })

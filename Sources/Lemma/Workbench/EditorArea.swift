@@ -81,6 +81,26 @@ struct VSTab: View {
     }
 }
 
+/// A tab bar's tabs side by side, each at its own width: what its icon, title and close button need, within the tab's
+/// 120 to 280 points, as VS Code's tabs fit their labels. In an HStack a tab took the width proposed to it, and the bar's
+/// scroll view proposes its whole width in some layout passes and none in others: while the side bar was resized, the
+/// tabs jumped between 280 points and their own width from one frame to the next.
+struct VSTabRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        return CGSize(width: sizes.reduce(0) { $0 + $1.width }, height: sizes.map(\.height).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for subview in subviews {
+            let width = subview.sizeThatFits(.unspecified).width
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading, proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width
+        }
+    }
+}
+
 /// The main editor group's tab bar: books, then Welcome, Settings and other special editors; editor actions at the end.
 struct MainEditorTabs: View {
     @Bindable var store: StudyStore
@@ -91,7 +111,7 @@ struct MainEditorTabs: View {
             GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 0) {
+                    VSTabRow {
                         ForEach(store.tabs) { tab in
                             VSTab(icon: "file-pdf", title: tab.title, active: store.activeMainTabID == tab.id,
                                   groupFocused: true, cover: store.library.first { $0.id == tab.id }.flatMap { store.covers.cover(for: $0) },
