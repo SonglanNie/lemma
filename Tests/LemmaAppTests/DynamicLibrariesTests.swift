@@ -241,6 +241,27 @@ final class DynamicLibrariesTests: XCTestCase {
         XCTAssertTrue(store.unfiledBooks.isEmpty, "The book is in Books, not among Other PDFs")
     }
 
+    /// A folder change reported as a PDF is dropped replaces the drop's scan before it starts, and waits first:
+    /// the Library is scanning from the drop on, so nothing reads it as up to date in the meantime.
+    @MainActor
+    func testALibraryIsScanningFromTheMomentAScanIsAskedFor() async throws {
+        _ = NSApplication.shared
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let support = root.appendingPathComponent("support"), pdf = root.appendingPathComponent("Downloads/Attention.pdf")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: pdf.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertTrue(try makePDF().write(to: pdf))
+        let store = StudyStore(root: support)
+        try store.libraries.replace([LibraryCollection(id: "csd", title: "CSD", kind: .studying, sources: [])])
+        store.libraries.start()
+        try await eventually("first scan") { store.libraries.updatedAt != nil && !store.libraries.isScanning }
+        store.addToLibrary([pdf], collectionID: "csd")
+        store.libraries.refresh(debounce: true)
+        XCTAssertTrue(store.libraries.isScanning, "Scanning through the folder change's wait")
+        try await eventually("the dropped PDF") { !store.libraries.isScanning }
+        XCTAssertEqual(store.libraries.entries.filter { $0.collectionID == "csd" }.map(\.key), [LibraryPaths.key(pdf.path)])
+    }
+
     @MainActor private func eventually(_ phase: String, _ condition: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(10)
         while !condition() && Date() < deadline { try await Task.sleep(for: .milliseconds(100)) }

@@ -303,9 +303,11 @@ final class DynamicLibraries {
     }
 
     /// Scans the sources again at utility priority. A newer scan cancels this one, worker included, so scans never
-    /// pile up while files keep changing.
+    /// pile up while files keep changing. The Library counts as scanning from the request on, through the debounce
+    /// and any scan this one replaces.
     func refresh(debounce: Bool = false) {
         scanTask?.cancel()
+        if !isScanning { isScanning = true }
         let collections = collections
         let root = repository.root
         let references = workspaceReferences?()
@@ -314,7 +316,6 @@ final class DynamicLibraries {
                 do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
             }
             guard !Task.isCancelled else { return }
-            if self?.isScanning == false { self?.isScanning = true }
             let worker = Task.detached(priority: .utility) {
                 LibraryScanner.scan(collections, references: references ?? DynamicLibraries.storedReferences(root: root))
             }
