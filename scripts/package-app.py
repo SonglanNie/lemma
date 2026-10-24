@@ -26,7 +26,7 @@ info = {
     "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
     "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
     "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.3.0-fork.1",
-    "CFBundleVersion": "44", "LSMinimumSystemVersion": "15.0",
+    "CFBundleVersion": "49", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",

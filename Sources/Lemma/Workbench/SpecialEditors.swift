@@ -239,6 +239,14 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.3.0-fork.1: open to the side", "split-horizontal", [
+            "⌘-drag a box around a figure, table or passage to open it beside the page. The arrow beside the split editor button opens this page, the selection or a box you draw there. ⌘-click still looks a word up.",
+            "⇧⌘-drag a box, in the main editor or the side editor, or click the picture-in-picture button, and it floats above the page in a window of its own, at the same size and zoom. Resizing the window scales it; keep several, from several books: they stay open across tabs and relaunches.",
+            "The side view opens fitted to the box, with the rest of the page around it, and names its tab after the figure, table or equation inside.",
+            "Opening the side editor, a notebook or a derivation, changing the layout or resizing a side bar keeps the page's zoom. Side pages open fitted to their text, not their paper.",
+            "Reference previews open with the page at a little less than your reading zoom, as wide as that page. Resize a preview by its right edge, bottom edge or corner, as a window (by its top edge when it opens above the reference); the page refits to the new width.",
+            "Reference previews stay on screen beside the window's edge, with their arrow on the reference."
+        ]),
         ("Lemma 3.3.0-fork.1: windows", "multiple-windows", [
             "Lemma can have several windows, each with its own tabs, panels and layout (File › New Window, ⇧⌘N). A new window takes the side bars, panel and sizes of the window it comes from.",
             "Drag a book's tab out of its window to open it in a new window there, onto another window's tabs or page to move it into that window, or choose Move Tab to New Window from the tab's menu.",
