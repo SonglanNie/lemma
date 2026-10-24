@@ -210,13 +210,12 @@ final class ReferenceFlowTests: XCTestCase {
         moved.autoPlace = nil; moved.panel.move(by: CGSize(width: 40, height: -30)); moved.keep()
         XCTAssertNil(view.referencePopover)
         XCTAssertEqual(view.keptReferencePeeks.count, 3)
-        moved.panel.fit(CGSize(width: before.width + 50, height: before.height + 20))
+        // Narrower, so that the screen's edge does not push it back: on a CI runner's 1024-point screen the peek opens
+        // against the window's right edge, and widened past the screen's edge, it would rightly move left.
+        moved.panel.fit(CGSize(width: before.width - 50, height: before.height + 20))
         let after = try XCTUnwrap(moved.panel.frame)
-        // Its title bar stays on its screen: on a screen lower than the fixture's window (a CI runner's), its top comes down.
-        let screen = fixture.window.childWindows?.first { $0.frame == after }?.screen?.visibleFrame
-        XCTAssertEqual(after.minX, before.minX + 40, accuracy: 0.5, "Resized, a kept peek keeps its left edge…")
-        XCTAssertEqual(after.maxY, min(before.maxY - 30, screen?.maxY ?? .greatestFiniteMagnitude), accuracy: 0.5,
-                       "…and its top edge, where the reader put it: \(before) → \(after), screen \(String(describing: screen))")
+        XCTAssertEqual(after.minX, before.minX + 40, accuracy: 0.5, "Resized, a kept peek keeps its left edge… \(before) → \(after)")
+        XCTAssertEqual(after.maxY, before.maxY - 30, accuracy: 0.5, "…and its top edge, where the reader put it: \(before) → \(after)")
 
         // Its own close button closes one kept peek.
         moved.frame.close()
