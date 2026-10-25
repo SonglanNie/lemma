@@ -143,7 +143,8 @@ final class ResearchWorkspaceTests: XCTestCase {
         store.open(fixture.book)
         store.open(fixture.paper)
         let first = store.tabs[0].id, second = store.tabs[1].id
-        store.moveTab(second, before: first)
+        // A drag to the right: the first tab dropped on the second takes its place.
+        store.moveTab(first, onto: second)
         store.flush()
         let restart = StudyStore(root: store.repository.root)
         restart.restore()

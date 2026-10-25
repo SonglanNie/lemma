@@ -37,6 +37,45 @@ final class WorkbenchTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "openTabs"), [])
     }
 
+    /// A tab dropped on another takes its place in either direction. Dragged to the right, it landed before the tab it was
+    /// dropped on: on its right-hand neighbour it stayed where it was, and no tab could be made last. A book's tab dropped
+    /// after the last tab goes last.
+    @MainActor
+    func testATabDroppedOnAnotherTakesItsPlaceInEitherDirection() throws {
+        var tabs = ["a", "b", "c"].map { BookTab(id: $0, title: $0) }
+        XCTAssertTrue(tabs.move("a", onto: "b")); XCTAssertEqual(tabs.map(\.id), ["b", "a", "c"])
+        XCTAssertTrue(tabs.move("b", onto: "c")); XCTAssertEqual(tabs.map(\.id), ["a", "c", "b"])
+        XCTAssertTrue(tabs.move("b", onto: "a")); XCTAssertEqual(tabs.map(\.id), ["b", "a", "c"])
+        XCTAssertTrue(tabs.move("b", onto: nil)); XCTAssertEqual(tabs.map(\.id), ["a", "c", "b"])
+        XCTAssertFalse(tabs.move("b", onto: nil), "Already last.")
+        XCTAssertFalse(tabs.move("a", onto: "a"))
+        XCTAssertFalse(tabs.move("a", onto: "missing"))
+        XCTAssertFalse(tabs.move("missing", onto: "a"))
+        XCTAssertEqual(tabs.map(\.id), ["a", "c", "b"])
+
+        let fixture = try WorkbenchFixture()
+        defer { fixture.close() }
+        let store = fixture.store
+        store.open(fixture.book); let bookID = try XCTUnwrap(store.workspace?.id)
+        store.open(fixture.paper); let paperID = try XCTUnwrap(store.workspace?.id)
+        XCTAssertTrue(store.dropBookTab(["lemma-tab:\(bookID)"], onto: paperID))
+        XCTAssertEqual(store.tabs.map(\.id), [paperID, bookID], "Dropped on its right-hand neighbour.")
+        XCTAssertTrue(store.dropBookTab(["lemma-tab:\(bookID)"], onto: paperID))
+        XCTAssertEqual(store.tabs.map(\.id), [bookID, paperID], "And back on its left-hand one.")
+        XCTAssertTrue(store.dropBookTab(["lemma-tab:\(bookID)"], onto: nil))
+        XCTAssertEqual(store.tabs.map(\.id), [paperID, bookID], "Dropped after the last tab.")
+        XCTAssertFalse(store.dropBookTab(["lemma-side:map"], onto: nil), "Only a book's tab moves along the book tabs.")
+        XCTAssertEqual(store.tabs.map(\.id), [paperID, bookID])
+
+        store.openToSide(page: 1, title: "Page two")
+        store.openToSide(page: 2, title: "Page three")
+        let sideIDs = store.sideEditors.map(\.id)
+        XCTAssertEqual(sideIDs.count, 2)
+        XCTAssertTrue(store.dropSideTab(["lemma-side:\(sideIDs[0])"], onto: sideIDs[1]))
+        XCTAssertEqual(store.sideEditors.map(\.id), Array(sideIDs.reversed()), "Side tabs move to the right too.")
+        XCTAssertFalse(store.dropSideTab(["lemma-tab:\(bookID)"], onto: sideIDs[0]))
+    }
+
     @MainActor
     func testWholeBookAnalysisDrivesGoToPrintedPagesAndBreadcrumbs() async throws {
         let fixture = try WorkbenchFixture(hosted: true)

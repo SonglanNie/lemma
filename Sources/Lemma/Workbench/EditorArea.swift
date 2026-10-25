@@ -119,10 +119,7 @@ struct MainEditorTabs: View {
                                 .id(tab.id)
                                 .contextMenu { bookTabMenu(tab) }
                                 .draggable("lemma-tab:\(tab.id)")
-                                .dropDestination(for: String.self) { values, _ in
-                                    guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
-                                    store.moveTab(String(value.dropFirst("lemma-tab:".count)), before: tab.id); return true
-                                }
+                                .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: tab.id) }
                         }
                         ForEach(store.specialTabs) { editor in
                             VSTab(icon: editor.icon, title: editor.title, active: store.activeSpecial == editor,
@@ -139,6 +136,8 @@ struct MainEditorTabs: View {
                             .overlay(alignment: .bottom) { Rectangle().fill(theme.border(.editorGroupHeaderTabsBorder)).frame(height: 1) }
                     }
                 }
+                // A book's tab dropped on the bar but not on another book's tab goes after the last book.
+                .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: nil) }
                 // The active tab is always in view (a tab just opened is laid out first).
                 .onAppear { if let id = store.activeMainTabID { DispatchQueue.main.async { proxy.scrollTo(id) } } }
                 .onChange(of: store.activeMainTabID) { _, id in

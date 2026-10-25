@@ -119,18 +119,27 @@ extension StudyStore {
         } catch { self.error = "Could not save the editor session: \(error.localizedDescription)" }
     }
 
-    func moveTab(_ id: String, before targetID: String) {
-        guard id != targetID, let source = tabs.firstIndex(where: { $0.id == id }), tabs.contains(where: { $0.id == targetID }) else { return }
-        let tab = tabs.remove(at: source)
-        tabs.insert(tab, at: tabs.firstIndex(where: { $0.id == targetID }) ?? tabs.endIndex)
-        saveWorkbench()
+    /// A tab dropped on another takes that tab's place, so a drag to the right lands after the tab dropped on (it landed
+    /// before it, and a tab dropped on its right-hand neighbour stayed where it was); dropped after the last tab, it goes last.
+    func moveTab(_ id: String, onto targetID: String?) {
+        if tabs.move(id, onto: targetID) { saveWorkbench() }
     }
 
-    func moveSideEditor(_ id: String, before targetID: String) {
-        guard id != targetID, let source = sideEditors.firstIndex(where: { $0.id == id }), sideEditors.contains(where: { $0.id == targetID }) else { return }
-        let editor = sideEditors.remove(at: source)
-        sideEditors.insert(editor, at: sideEditors.firstIndex(where: { $0.id == targetID }) ?? sideEditors.endIndex)
-        saveWorkbench()
+    func moveSideEditor(_ id: String, onto targetID: String) {
+        if sideEditors.move(id, onto: targetID) { saveWorkbench() }
+    }
+
+    /// A drop on the main group's tab bar, on a tab or after the last one (no target): a book's tab, dragged as
+    /// `lemma-tab:<id>`, moves there.
+    func dropBookTab(_ values: [String], onto targetID: String?) -> Bool {
+        guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
+        moveTab(String(value.dropFirst("lemma-tab:".count)), onto: targetID); return true
+    }
+
+    /// A drop on a side editor's tab: another side editor's tab, dragged as `lemma-side:<id>`, takes its place.
+    func dropSideTab(_ values: [String], onto targetID: String) -> Bool {
+        guard let value = values.first, value.hasPrefix("lemma-side:") else { return false }
+        moveSideEditor(String(value.dropFirst("lemma-side:".count)), onto: targetID); return true
     }
 
     /// Closes the other book tabs together: the kept book comes to the front, none of the others is opened on the way.
@@ -168,6 +177,19 @@ extension StudyStore {
         }
         saveWorkbench()
         fitPageIfOverflowing()
+    }
+}
+
+extension Array where Element: Identifiable, Element.ID == String {
+    /// Moves the element `id` to the place of the element `targetID`, those in between shifting one place toward its old
+    /// place, or to the end without a target. False when nothing moves.
+    mutating func move(_ id: String, onto targetID: String?) -> Bool {
+        guard let source = firstIndex(where: { $0.id == id }) else { return false }
+        var target = endIndex - 1
+        if let targetID { guard let index = firstIndex(where: { $0.id == targetID }) else { return false }; target = index }
+        guard target != source else { return false }
+        insert(remove(at: source), at: target)
+        return true
     }
 }
 

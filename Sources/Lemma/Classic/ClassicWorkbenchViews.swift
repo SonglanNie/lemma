@@ -90,14 +90,13 @@ struct ClassicEditorTabBar: View {
                                   closeOthers: { store.closeOtherTabs(keeping: tab.id) },
                                   move: { store.shiftBookTab(tab.id, by: $0) })
                             .draggable("lemma-tab:\(tab.id)")
-                            .dropDestination(for: String.self) { values, _ in
-                                guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
-                                store.moveTab(String(value.dropFirst("lemma-tab:".count)), before: tab.id); return true
-                            }
+                            .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: tab.id) }
                         Divider().frame(height: 18)
                     }
                 }
             }
+            // A tab dropped after the last one goes last.
+            .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: nil) }
             Button(action: store.choosePDF) { Image(systemName: "plus").font(.system(size: 11, weight: .medium)).frame(width: 28, height: 28) }
                 .buttonStyle(.borderless).help("Open a PDF in a new tab · ⌘O").accessibilityLabel("Open a PDF")
             Spacer(minLength: 0)

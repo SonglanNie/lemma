@@ -45,10 +45,7 @@ private struct SideTabStrip: View {
                                 Button("Move Tab Right") { store.shiftSideTab(editor.id, by: 1) }
                             }
                             .draggable("lemma-side:\(editor.id)")
-                            .dropDestination(for: String.self) { values, _ in
-                                guard let value = values.first, value.hasPrefix("lemma-side:") else { return false }
-                                store.moveSideEditor(String(value.dropFirst("lemma-side:".count)), before: editor.id); return true
-                            }
+                            .dropDestination(for: String.self) { values, _ in store.dropSideTab(values, onto: editor.id) }
                             .id(editor.id)
                     }
                 }
@@ -102,10 +99,7 @@ private struct ClassicSideTabStrip: View {
                                 select: { store.activateSideEditor(editor.id) }, close: { store.closeSideEditor(editor.id) },
                                 move: { store.shiftSideTab(editor.id, by: $0) })
                             .draggable("lemma-side:\(editor.id)")
-                            .dropDestination(for: String.self) { values, _ in
-                                guard let value = values.first, value.hasPrefix("lemma-side:") else { return false }
-                                store.moveSideEditor(String(value.dropFirst("lemma-side:".count)), before: editor.id); return true
-                            }
+                            .dropDestination(for: String.self) { values, _ in store.dropSideTab(values, onto: editor.id) }
                         Divider().frame(height: 16)
                     }
                 }
