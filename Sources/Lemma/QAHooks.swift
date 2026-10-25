@@ -209,6 +209,8 @@ extension StudyStore {
         state["navigator"] = navigatorSection.rawValue
         state["panel"] = showPanel ? panelTab.rawValue : nil
         state["split"] = split?.title
+        let find = FindController.shared
+        state["find"] = ["visible": find.isVisible, "query": find.query, "searched": reader.hasSearched, "results": reader.searchResults.count] as [String: Any]
         state["floatingBoxes"] = app.floatingBoxes.boxes.map { ["title": $0.title, "zoom": $0.zoom, "frame": [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height]] }
         state["floatingHidden"] = app.floatingBoxes.hidden
         state["breadcrumb"] = breadcrumb().map(\.title)
