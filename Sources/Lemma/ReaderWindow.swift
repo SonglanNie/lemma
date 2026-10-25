@@ -61,8 +61,8 @@ struct ReaderWindow: View {
             if let window { store.titleBar.attach(window); fullScreen = window.styleMask.contains(.fullScreen) }
             store.fitWindowToScreen()
         })
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { if $0.object as? NSWindow === store.mainWindow { fullScreen = true } }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { if $0.object as? NSWindow === store.mainWindow { fullScreen = false } }
         .navigationTitle(store.activeDocumentTitle)
     }
 

@@ -135,8 +135,8 @@ final class AppModel {
         restoreWindows()
         let store = id.flatMap(window) ?? windows.first { !$0.hasWindow && !$0.windowRequested }
             ?? keep(StudyStore(app: self, windowID: UUID()))
-        if !store.restoreStarted { store.restore() }
         store.hasWindow = true; store.windowRequested = false
+        if !store.restoreStarted { store.restore() }
         waiting.removeAll { $0 === store }
         frontID = store.windowID
         saveWindows()
@@ -156,20 +156,20 @@ final class AppModel {
             registered.removeAll { $0.store === store }; waiting.removeAll { $0 === store }
         }
         let store = keep(StudyStore(app: self, windowID: UUID()))
-        store.workbench.layout = source.workbenchLayout
-        store.workbench.showLibrary = source.workbench.showLibrary
-        store.workbench.showStudy = source.workbench.showStudy
-        store.restore()
+        store.takeLayout(of: source)
         if let frame = source.mainWindow?.frame {
             store.windowFrame = frame.offsetBy(dx: 24, dy: -24)
         }
+        store.restore()
         requestWindow(store)
         saveWindows()
         return store
     }
 
-    private func requestWindow(_ store: StudyStore) {
-        guard !store.windowRequested else { return }
+    /// Opens a window for a workbench that has none, once: SwiftUI could open two for two requests made before the first
+    /// window appears. Restored windows are opened together once the first one is up.
+    func requestWindow(_ store: StudyStore) {
+        guard !restoring, !store.hasWindow, !store.windowRequested else { return }
         store.windowRequested = true
         openWindow?(store.windowID)
     }
@@ -179,6 +179,38 @@ final class AppModel {
         store.mainWindow?.deminiaturize(nil)
         store.mainWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Moves a book's tab into another window, at a tab's place (or at the end), and shows it there. The source window
+    /// hands over its loaded document and what was built from it, so nothing is read again; left with no tab, it
+    /// closes, as a browser window does.
+    func moveBook(_ id: String, from source: StudyStore, to destination: StudyStore, onto targetID: String? = nil) {
+        guard source !== destination, let handover = source.handOverBook(id) else { return }
+        destination.receive(handover, onto: targetID)
+        show(destination)
+        if source.tabs.isEmpty, source.specialTabs.isEmpty, source.fileTabs.isEmpty, source.hasWindow, let window = source.mainWindow { window.close() }
+        saveWindows()
+    }
+
+    /// Moves a book into a window of its own, its top left corner at a point on the screen (where a tab was dropped).
+    func moveBookToNewWindow(_ id: String, from source: StudyStore, topLeft: NSPoint? = nil) {
+        // A window's only tab dragged out takes its window along, as a browser's does.
+        if !source.canMoveTabToNewWindow, let window = source.mainWindow {
+            if let topLeft { window.setFrameTopLeftPoint(topLeft) }
+            return
+        }
+        guard let handover = source.handOverBook(id) else { return }
+        let store = keep(StudyStore(app: self, windowID: UUID()))
+        store.takeLayout(of: source)
+        if let frame = source.mainWindow?.frame {
+            store.windowFrame = topLeft.map { CGRect(x: $0.x, y: $0.y - frame.height, width: frame.width, height: frame.height) } ?? frame.offsetBy(dx: 24, dy: -24)
+        }
+        store.restore()
+        store.receive(handover, onto: nil)
+        // The Welcome page greets an empty window; this one has its book.
+        store.closeSpecial(.welcome)
+        requestWindow(store)
+        saveWindows()
     }
 
     func windowDidBecomeKey(_ window: NSWindow) {

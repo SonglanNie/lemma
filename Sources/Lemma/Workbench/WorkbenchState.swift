@@ -60,6 +60,7 @@ extension StudyStore {
         if !specialTabs.contains(editor) { specialTabs.append(editor) }
         activeSpecial = editor
         saveWorkbench()
+        app.requestWindow(self)
     }
 
     func closeSpecial(_ editor: SpecialEditor) {
@@ -147,13 +148,16 @@ extension StudyStore {
         split = SplitEditorState(pageIndex: book.reading.pageIndex, target: nil, title: book.title, bookID: id)
     }
 
-    /// Library rows and book tabs already carry these local drag payloads; unopened rows carry a file URL.
+    /// Library rows and book tabs already carry these local drag payloads; unopened rows carry a file URL. A book tab
+    /// from another window dropped on the editor brings its book here.
     @discardableResult
     func openEditorDrop(_ value: String, toSide: Bool) -> Bool {
         for prefix in ["lemma-book:", "lemma-tab:"] where value.hasPrefix(prefix) {
             let id = String(value.dropFirst(prefix.count))
             guard let book = library.first(where: { $0.id == id }) else { return false }
-            if toSide { openBookToTheSide(id) } else { reopen(book) }
+            if toSide { openBookToTheSide(id) }
+            else if prefix == "lemma-tab:", let source = tabSource(id), source !== self { app.moveBook(id, from: source, to: self) }
+            else { reopen(book) }
             return true
         }
         guard let url = URL(string: value), url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return false }

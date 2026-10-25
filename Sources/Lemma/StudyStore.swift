@@ -677,6 +677,8 @@ final class StudyStore {
         saveTabs()
         if windowID == AppModel.primaryWindowID { UserDefaults.standard.set(workspace.id, forKey: "lastWorkspaceID") }
         tracker?.start()
+        // A book opened from the menus while every window is closed opens the window of this workbench.
+        app.requestWindow(self)
     }
 
     /// Leaves recall, drawing and region modes and the selection, assigning only what is set: each of these redraws the
@@ -764,6 +766,62 @@ final class StudyStore {
         recentDocuments.removeAll { $0 == id }
         outlineCache[id] = nil
         accessedSources.removeValue(forKey: id)?.stopAccessingSecurityScopedResource()
+    }
+
+    /// What a window gives another with a book's tab: its loaded document and what was built from it, so the book is
+    /// shown there without being read or analysed again and its notebooks keep running, and its editors and reading
+    /// position, which each window keeps for itself.
+    struct BookHandover {
+        let tab: BookTab
+        let document: PDFDocument?
+        let referenceIndex: ReferenceIndex?
+        let analysis: BookAnalysisModel?
+        let outline: OutlineCacheEntry?
+        let source: URL?
+        let editors: BookEditorState?
+    }
+
+    /// Gives a book's tab to another window: the book is saved (with the editors beside it), leaves this window without
+    /// letting go of what it holds, and the neighbouring tab takes its place when it was in front.
+    func handOverBook(_ id: String) -> BookHandover? {
+        guard let position = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+        let isCurrent = workspace?.id == id
+        if isCurrent { flush(); rememberBookEditors() }
+        let tab = tabs.remove(at: position)
+        let document = documents.removeValue(forKey: id), referenceIndex = referenceIndexes.removeValue(forKey: id)
+        let analysis = analyses.removeValue(forKey: id), outline = outlineCache.removeValue(forKey: id)
+        let source = accessedSources.removeValue(forKey: id)
+        recentDocuments.removeAll { $0 == id }
+        if isCurrent {
+            let start = min(position, max(tabs.count - 1, 0))
+            showFirstOpenable(Array(tabs[start...].map(\.id)) + Array(tabs[..<start].reversed().map(\.id)))
+        }
+        let handover = BookHandover(tab: tab, document: document, referenceIndex: referenceIndex, analysis: analysis,
+                                    outline: outline, source: source, editors: workbench.books.removeValue(forKey: id))
+        saveTabs()
+        return handover
+    }
+
+    /// Takes a book's tab from another window, at a tab's place (or at the end), and brings it to the front. A window
+    /// already showing the book keeps its own document and reading position.
+    func receive(_ handover: BookHandover, onto targetID: String?) {
+        let id = handover.tab.id
+        if tabs.contains(where: { $0.id == id }) {
+            handover.referenceIndex?.saveIfNeeded()
+            handover.analysis?.cancel()
+            handover.source?.stopAccessingSecurityScopedResource()
+            if let targetID { moveTab(id, onto: targetID) }
+        } else {
+            if let document = handover.document { documents[id] = document }
+            if let index = handover.referenceIndex { referenceIndexes[id] = index }
+            if let model = handover.analysis { analyses[id] = model }
+            if let outline = handover.outline { outlineCache[id] = outline }
+            if let source = handover.source { accessedSources.removeValue(forKey: id)?.stopAccessingSecurityScopedResource(); accessedSources[id] = source }
+            if let editors = handover.editors { workbench.books[id] = editors }
+            tabs.insert(handover.tab, at: targetID.flatMap { target in tabs.firstIndex { $0.id == target } } ?? tabs.endIndex)
+        }
+        activateBook(id)
+        saveTabs()
     }
 
     /// Shows the first of these tabs whose book opens. Tabs whose PDF cannot be opened (moved, deleted, on a disk that is
