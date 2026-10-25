@@ -152,10 +152,31 @@ extension StudyStore {
     }
 
     /// A drop on the main group's tab bar, on a tab or after the last one (no target): a book's tab, dragged as
-    /// `lemma-tab:<id>`, moves there.
+    /// `lemma-tab:<id>`, moves there. A tab from another window brings its book here.
     func dropBookTab(_ values: [String], onto targetID: String?) -> Bool {
         guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
-        moveTab(String(value.dropFirst("lemma-tab:".count)), onto: targetID); return true
+        let id = String(value.dropFirst("lemma-tab:".count))
+        if let source = tabSource(id), source !== self { app.moveBook(id, from: source, to: self, onto: targetID) }
+        else { moveTab(id, onto: targetID) }
+        return true
+    }
+
+    /// The window a dropped book tab comes from: the one it is being dragged from, else this one when it has the tab.
+    func tabSource(_ id: String) -> StudyStore? {
+        TabDragging.shared.source(of: id) ?? (tabs.contains { $0.id == id } ? self : app.owner(of: id))
+    }
+
+    /// A tab can go to a window of its own unless it is the window's only editor.
+    var canMoveTabToNewWindow: Bool { tabs.count + specialTabs.count + fileTabs.count > 1 }
+
+    /// A new window lays out its workbench as the window it comes from does: the same side bars, panel and sizes (as
+    /// they were before Zen Mode, if that window is in it).
+    func takeLayout(of source: StudyStore) {
+        source.saveWorkbench()
+        workbench.layout = source.workbench.layout
+        workbench.showLibrary = source.workbench.showLibrary; workbench.showStudy = source.workbench.showStudy
+        workbench.showPanel = source.workbench.showPanel
+        workbench.panelTab = source.workbench.panelTab; workbench.navigator = source.workbench.navigator
     }
 
     /// A drop on a side editor's tab: another side editor's tab, dragged as `lemma-side:<id>`, takes its place.

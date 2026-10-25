@@ -118,8 +118,7 @@ struct MainEditorTabs: View {
                                   select: { store.activateMainTab(tab.id) }, close: { store.closeTab(tab.id) })
                                 .id(tab.id)
                                 .contextMenu { bookTabMenu(tab) }
-                                .draggable("lemma-tab:\(tab.id)")
-                                .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: tab.id) }
+                                .bookTabDrag(store, bookID: tab.id)
                         }
                         ForEach(store.specialTabs) { editor in
                             VSTab(icon: editor.icon, title: editor.title, active: store.activeSpecial == editor,
@@ -180,6 +179,7 @@ struct MainEditorTabs: View {
         Divider()
         Button("Move Tab Left") { store.shiftBookTab(tab.id, by: -1) }
         Button("Move Tab Right") { store.shiftBookTab(tab.id, by: 1) }
+        Button("Move Tab to New Window") { store.app.moveBookToNewWindow(tab.id, from: store) }.disabled(!store.canMoveTabToNewWindow)
     }
 }
 
