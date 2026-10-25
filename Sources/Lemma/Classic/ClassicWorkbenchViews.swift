@@ -88,9 +88,9 @@ struct ClassicEditorTabBar: View {
                                   selected: tab.id == store.workspace?.id,
                                   select: { store.activateTab(tab.id) }, close: { store.closeTab(tab.id) },
                                   closeOthers: { store.closeOtherTabs(keeping: tab.id) },
-                                  move: { store.shiftBookTab(tab.id, by: $0) })
-                            .draggable("lemma-tab:\(tab.id)")
-                            .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: tab.id) }
+                                  move: { store.shiftBookTab(tab.id, by: $0) },
+                                  moveToNewWindow: store.canMoveTabToNewWindow ? { store.app.moveBookToNewWindow(tab.id) } : nil)
+                            .bookTabDrag(store, bookID: tab.id)
                         Divider().frame(height: 18)
                     }
                 }
@@ -116,6 +116,7 @@ private struct ClassicEditorTab: View {
     let close: () -> Void
     let closeOthers: () -> Void
     let move: (Int) -> Void
+    let moveToNewWindow: (() -> Void)?
     @State private var hovering = false
 
     var body: some View {
@@ -151,6 +152,7 @@ private struct ClassicEditorTab: View {
             Divider()
             Button("Move Tab Left") { move(-1) }
             Button("Move Tab Right") { move(1) }
+            Button("Move Tab to New Window") { moveToNewWindow?() }.disabled(moveToNewWindow == nil)
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)

@@ -29,7 +29,7 @@ final class TutorialTests: XCTestCase {
     @MainActor private func makeStore() -> StudyStore {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lemma-tour-\(UUID().uuidString)", isDirectory: true)
         roots.append(root)
-        return StudyStore(root: root)
+        return StudyStore(app: AppModel(root: root))
     }
 
     @MainActor

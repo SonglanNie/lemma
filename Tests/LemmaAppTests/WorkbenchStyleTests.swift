@@ -18,12 +18,12 @@ final class WorkbenchStyleTests: XCTestCase {
         for editor in [SpecialEditor.settings, .welcome] {
             store.openSpecial(editor)
             store.flush()
-            let restarted = StudyStore(root: store.repository.root)
-            restarted.restore()
+            let restarted = StudyStore(app: AppModel(root: store.repository.root))
+            restarted.app.restore()
             XCTAssertEqual(restarted.workspace?.id, bookID)
             XCTAssertEqual(restarted.activeSpecial, editor, "Reopening the book must preserve the tab that was in front.")
-            let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.sessionURL))
-            XCTAssertEqual(session.activeSpecial, editor, "The restored active editor must also remain saved.")
+            let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.app.sessionURL))
+            XCTAssertEqual(session.windows.first?.activeSpecial, editor, "The restored active editor must also remain saved.")
             restarted.flush()
         }
     }
@@ -151,7 +151,7 @@ final class WorkbenchStyleTests: XCTestCase {
         XCTAssertFalse(style.isModified)
         let minimap = try XCTUnwrap(items.first { $0.id == "editor.minimap.enabled" })
         minimap.set("false")
-        XCTAssertFalse(fixture.store.showMinimap)
+        XCTAssertFalse(fixture.store.app.showMinimap)
         minimap.set("true")
         XCTAssertTrue(items.filter(\.commonlyUsed).count >= 6)
         XCTAssertTrue(try XCTUnwrap(items.first { $0.id == "workbench.colorTheme" }).matches("color theme"))
@@ -242,8 +242,8 @@ final class WorkbenchStyleTests: XCTestCase {
         XCTAssertNil(store.debug)
         XCTAssertFalse(store.reader.rulerMode, "Stopping puts the ruler away when debugging had taken it out.")
         store.saveWorkbench()
-        let saved = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.sessionURL))
-        XCTAssertEqual(saved.books[try XCTUnwrap(store.workspace?.id)]?.breakpoints?.count, 1, "Breakpoints are kept with the book's session.")
+        let saved = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.app.sessionURL))
+        XCTAssertEqual(saved.books[try XCTUnwrap(store.workspace?.id)]?.breakpoints.count, 1, "Breakpoints are kept with the book's session.")
     }
 
     @MainActor
@@ -350,15 +350,15 @@ final class WorkbenchStyleTests: XCTestCase {
         store.open(copy)
         try await fixture.settle()
         let page = store.reader.view?.currentPage
-        store.librarySearch.query = "smoother"
+        store.app.librarySearch.query = "smoother"
         store.runLibrarySearch()
         let deadline = Date.now.addingTimeInterval(20)
-        while store.librarySearch.isSearching || store.reader.isSearching, Date.now < deadline { try await Task.sleep(for: .milliseconds(50)) }
-        let listed = try XCTUnwrap(store.librarySearch.results.first { $0.id == store.workspace?.id })
+        while store.app.librarySearch.isSearching || store.reader.isSearching, Date.now < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        let listed = try XCTUnwrap(store.app.librarySearch.results.first { $0.id == store.workspace?.id })
         XCTAssertEqual(store.reader.searchResults.count, listed.hits.count, "The open book's matches mark its minimap and ruler.")
         XCTAssertTrue(store.reader.searchResults.allSatisfy { $0.string?.lowercased() == "smoother" }, "Cached ranges select the words PDFKit sees.")
         XCTAssertTrue(store.reader.view?.currentPage === page, "Searching does not move the page.")
-        store.librarySearch.clear(); store.reader.resetSearch()
+        store.app.librarySearch.clear(); store.reader.resetSearch()
         XCTAssertTrue(store.reader.searchResults.isEmpty)
     }
 

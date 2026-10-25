@@ -88,9 +88,7 @@ final class QuickAskFlowTests: XCTestCase {
     private func openFixture() throws -> (StudyStore, URL) {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
         addTeardownBlock {
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
             try? FileManager.default.removeItem(at: root)
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -121,7 +119,7 @@ final class QuickAskFlowTests: XCTestCase {
               ("and Figure 1.1 shows a fitted example, which we revisit in the exercises", 72, 584, false)])
         context.closePDF()
         try (bytes as Data).write(to: source)
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         return (store, source)
     }
@@ -132,8 +130,7 @@ final class ReviewFlowTests: XCTestCase {
     func testReviewDeckSchedulingAndClozeMasksOnThePage() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("review.pdf")
         let document = PDFDocument()
@@ -144,7 +141,7 @@ final class ReviewFlowTests: XCTestCase {
         }
         document.insert(try XCTUnwrap(PDFPage(image: image)), at: 0)
         XCTAssertTrue(document.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         store.reader.selection = (0, CGRect(x: 20, y: 140, width: 330, height: 40), "")
         store.addNote()
@@ -179,7 +176,7 @@ final class ReviewFlowTests: XCTestCase {
         XCTAssertTrue(store.reviewNotes.isEmpty, "A good recall schedules the note for later.")
         XCTAssertEqual(store.reviewDeck.map(\.id), [id])
         XCTAssertEqual(store.currentNote?.state, .understood)
-        let reopened = StudyStore(root: root.appendingPathComponent("support"))
+        let reopened = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         reopened.open(source)
         let saved = try XCTUnwrap(reopened.workspace?.notes.first)
         XCTAssertEqual(saved.masks, [right])

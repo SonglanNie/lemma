@@ -558,16 +558,16 @@ extension StudyStore {
             try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "debug").json"))
         case "librarySearch":
             reveal(.search)
-            librarySearch.query = info["query"] ?? ""
-            librarySearch.scope = info["scope"] == "book" ? .book : .library
+            app.librarySearch.query = info["query"] ?? ""
+            app.librarySearch.scope = info["scope"] == "book" ? .book : .library
             runLibrarySearch()
             let deadline = Date.now.addingTimeInterval(Double(info["timeout"] ?? "60") ?? 60)
             try await Task.sleep(for: .milliseconds(100))
-            while librarySearch.isSearching, Date.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
-            let rows = librarySearch.results.map { ["book": $0.title, "hits": $0.hits.count, "first": $0.hits.first.map { "p. \($0.pageLabel): …\($0.before.suffix(30))[\($0.match)]\($0.after.prefix(30))…" } ?? ""] as [String: Any] }
+            while app.librarySearch.isSearching, Date.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+            let rows = app.librarySearch.results.map { ["book": $0.title, "hits": $0.hits.count, "first": $0.hits.first.map { "p. \($0.pageLabel): …\($0.before.suffix(30))[\($0.match)]\($0.after.prefix(30))…" } ?? ""] as [String: Any] }
             try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "search").json"))
         case "openFirstHit":
-            if let hit = librarySearch.results.first(where: { $0.title == info["book"] })?.hits.first ?? librarySearch.results.first?.hits.first { openSearchHit(hit) }
+            if let hit = app.librarySearch.results.first(where: { $0.title == info["book"] })?.hits.first ?? app.librarySearch.results.first?.hits.first { openSearchHit(hit) }
             try await Task.sleep(for: .milliseconds(700))
         case "titlebar":
             // The window's frame views above the content (title bar, toolbar), to check what draws over the workbench.
@@ -594,7 +594,7 @@ extension StudyStore {
             else if let id = info["value"] { ThemeManager.shared.autoDetect = false; ThemeManager.shared.choose(id) }
         case "themePreview": ThemeManager.shared.preview(info["value"])
         case "accent": ThemeManager.shared.accent = AccentOverride(rawValue: info["value"] ?? "") ?? .theme
-        case "minimap": showMinimap = info["value"] != "0"
+        case "minimap": app.showMinimap = info["value"] != "0"
         case "debugStart": startDebugging()
         case "debugStep": for _ in 0..<(Int(info["count"] ?? "1") ?? 1) { debugStepOver() }
         case "debugBack": debugStepBack()
@@ -639,7 +639,7 @@ extension StudyStore {
         case "notify": notify(info["message"] ?? "Hello from QA", severity: info["severity"] == "error" ? .error : info["severity"] == "warning" ? .warning : .info)
         case "notifications": showNotificationCenter = info["value"] != "0"
         case "panelMax": showPanel = true; panelMaximized = info["value"] != "0"
-        case "pane": paneExpanded[info["key"] ?? ""] = info["value"] != "0"
+        case "pane": app.paneExpanded[info["key"] ?? ""] = info["value"] != "0"
         case "openSide": if let book = library.first(where: { $0.title == info["title"] }) { openBookToTheSide(book.id) }
         case "closeMarginNote": dismissMarginNote()
         case "lineFlip":

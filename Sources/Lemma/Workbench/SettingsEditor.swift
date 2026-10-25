@@ -112,11 +112,11 @@ enum SettingsRegistry {
             ({ String(store.reader.showLineNumbers) }, { store.reader.showLineNumbers = $0 == "true" }))
         add("editor.minimap.enabled", "Editor", "Minimap", "Enabled",
             "Show page miniatures beside the page, with the visible region as a slider and your marks drawn over them.",
-            .toggle, default: "true", common: true, ({ String(store.showMinimap) }, { store.showMinimap = $0 == "true" }))
+            .toggle, default: "true", common: true, ({ String(store.app.showMinimap) }, { store.app.showMinimap = $0 == "true" }))
         add("editor.minimap.showSlider", "Editor", "Minimap", "Show Slider",
             "When the slider marking the visible region is shown: only while the pointer is over the minimap, as in VS Code, or always.",
             .choice([("mouseover", "Mouse Over"), ("always", "Always")]), default: "mouseover",
-            ({ store.minimapSliderAlways ? "always" : "mouseover" }, { store.minimapSliderAlways = $0 == "always" }))
+            ({ store.app.minimapSliderAlways ? "always" : "mouseover" }, { store.app.minimapSliderAlways = $0 == "always" }))
         add(LemmaPreferences.referenceLinks, "Editor", "References", "Link References",
             "Underline references such as “(2.3)”, “Figure 2.1”, “Ex. 2.8” or “Rudin (1976)”. Click one to peek at it; Go to moves there and ⌥⌘← comes back.",
             .toggle, default: "true", ({ String(LemmaPreferences.flag(LemmaPreferences.referenceLinks)) }, {

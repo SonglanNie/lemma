@@ -10,18 +10,14 @@ final class DynamicLibrariesTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let book = root.appendingPathComponent("Original.pdf"), support = root.appendingPathComponent("support")
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        let previousTabs = UserDefaults.standard.object(forKey: "openTabs")
         defer {
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
-            UserDefaults.standard.set(previousTabs, forKey: "openTabs")
             try? FileManager.default.removeItem(at: root)
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try WorkbenchFixture.writeBook(to: book)
         let before: StudyWorkspace, savedBefore: StudyWorkspace
         let renamed = root.appendingPathComponent("Renamed.pdf")
-        var firstStore: StudyStore? = StudyStore(root: support)
+        var firstStore: StudyStore? = StudyStore(app: AppModel(root: support))
         weak var releasedStore = firstStore
         do {
             let store = try XCTUnwrap(firstStore)
@@ -63,7 +59,7 @@ final class DynamicLibrariesTests: XCTestCase {
         firstStore = nil
         XCTAssertNil(releasedStore, "Restart releases the previous store and its file watchers")
 
-        let restored = StudyStore(root: support)
+        let restored = StudyStore(app: AppModel(root: support))
         restored.reopen(try XCTUnwrap(restored.library.first))
         XCTAssertNil(restored.error)
         XCTAssertEqual(restored.workspace?.id, before.id)
@@ -122,15 +118,14 @@ final class DynamicLibrariesTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let support = root.appendingPathComponent("support"), folder = root.appendingPathComponent("watch")
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let config = [LibraryCollection(id: "course", title: "CSD", kind: .studying, parent: "School", sources: [LibrarySource(path: folder.path)])]
         try LibraryCollectionRepository(root: support).save(config)
         let source = root.appendingPathComponent("current.pdf")
         let pdf = try makePDF()
         XCTAssertTrue(pdf.write(to: source))
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         store.libraries.start()
         store.open(source)
         store.reader.selection = (0, CGRect(x: 20, y: 20, width: 60, height: 60), "source")
@@ -161,7 +156,7 @@ final class DynamicLibrariesTests: XCTestCase {
         try await eventually("removal") { store.libraries.entries.isEmpty }
         XCTAssertEqual(store.workspace?.id, before.id)
         XCTAssertEqual(store.workspace?.notes, before.notes)
-        let loaded = StudyStore(root: support)
+        let loaded = StudyStore(app: AppModel(root: support))
         XCTAssertEqual(loaded.libraries.collections, store.libraries.collections)
     }
 
@@ -169,14 +164,13 @@ final class DynamicLibrariesTests: XCTestCase {
     func testArxivLinksOpenExactLocalCopiesWithoutASecondDownload() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         let folder = root.appendingPathComponent("Papers")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let pdf = try makePDF()
         let file = folder.appendingPathComponent("arXiv 1706.03762v7.pdf")
         XCTAssertTrue(pdf.write(to: file))
-        let store = StudyStore(root: root)
+        let store = StudyStore(app: AppModel(root: root))
         XCTAssertNil(store.localArxivFile("1706.03762"), "An unversioned identifier must not silently reuse a selected old version")
         store.openLink(try XCTUnwrap(ArxivIdentifier.link("1706.03762v7")))
         XCTAssertEqual(store.workspace.map { LibraryPaths.key($0.sourcePath) }, LibraryPaths.key(file.path))
@@ -203,7 +197,7 @@ final class DynamicLibrariesTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("Part 1"), withIntermediateDirectories: true)
         XCTAssertTrue(try makePDF().write(to: folder.appendingPathComponent("Part 1/First.pdf")))
         try LibraryCollectionRepository(root: support).save([LibraryCollection(id: "course", title: "Course", kind: .studying, sources: [LibrarySource(path: folder.path)])])
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         store.libraries.start()
         try await eventually("first scan") { store.libraries.entries.count == 1 && !store.libraries.isScanning }
         try await Task.sleep(for: .milliseconds(1500))
@@ -227,9 +221,8 @@ final class DynamicLibrariesTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let support = root.appendingPathComponent("support"), books = support.appendingPathComponent("Books")
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
-        let store = StudyStore(root: support)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = StudyStore(app: AppModel(root: support))
         store.libraries.start()
         try await eventually("first scan") { store.libraries.updatedAt != nil && !store.libraries.isScanning }
         XCTAssertTrue(store.libraries.entries.isEmpty)
@@ -251,7 +244,7 @@ final class DynamicLibrariesTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: pdf.deletingLastPathComponent(), withIntermediateDirectories: true)
         XCTAssertTrue(try makePDF().write(to: pdf))
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         try store.libraries.replace([LibraryCollection(id: "csd", title: "CSD", kind: .studying, sources: [])])
         store.libraries.start()
         try await eventually("first scan") { store.libraries.updatedAt != nil && !store.libraries.isScanning }

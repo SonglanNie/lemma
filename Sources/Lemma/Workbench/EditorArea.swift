@@ -118,8 +118,7 @@ struct MainEditorTabs: View {
                                   select: { store.activateMainTab(tab.id) }, close: { store.closeTab(tab.id) })
                                 .id(tab.id)
                                 .contextMenu { bookTabMenu(tab) }
-                                .draggable("lemma-tab:\(tab.id)")
-                                .dropDestination(for: String.self) { values, _ in store.dropBookTab(values, onto: tab.id) }
+                                .bookTabDrag(store, bookID: tab.id)
                         }
                         ForEach(store.specialTabs) { editor in
                             VSTab(icon: editor.icon, title: editor.title, active: store.activeSpecial == editor,
@@ -173,6 +172,7 @@ struct MainEditorTabs: View {
         Divider()
         Button("Move Tab Left") { store.shiftBookTab(tab.id, by: -1) }
         Button("Move Tab Right") { store.shiftBookTab(tab.id, by: 1) }
+        Button("Move Tab to New Window") { store.app.moveBookToNewWindow(tab.id) }.disabled(!store.canMoveTabToNewWindow)
     }
 }
 
@@ -210,7 +210,7 @@ struct EditorActions: View {
                 .submenu("Page Theme", PageTheme.allCases.map { page in .action(page.label, checked: page == store.pageTheme) { store.pageTheme = page } }),
                 .separator,
                 .action("Line Numbers", checked: store.reader.showLineNumbers, shortcut: "⌃⌘L") { store.reader.showLineNumbers.toggle() },
-                .action("Minimap", checked: store.showMinimap) { store.showMinimap.toggle() },
+                .action("Minimap", checked: store.app.showMinimap) { store.app.showMinimap.toggle() },
                 .action("Link References", checked: referenceLinks) { referenceLinks.toggle() },
                 .separator,
                 .action("Fit Page", shortcut: "⌘0") { store.reader.fit() },

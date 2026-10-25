@@ -71,7 +71,7 @@ struct ResizableSidebarPanes<Actions: View, Content: View>: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let expanded = panes.filter { store.paneExpanded[$0.id] ?? $0.initiallyExpanded }
+            let expanded = panes.filter { store.app.paneExpanded[$0.id] ?? $0.initiallyExpanded }
             let layout = SidebarPaneLayout(height: geometry.size.height, panes: panes.map(\.id), expanded: expanded.map(\.id),
                                            fill: fill, preferred: draggingHeights ?? store.workbenchLayout.explorerHeights,
                                            defaults: Dictionary(uniqueKeysWithValues: panes.map { ($0.id, $0.preferredHeight) }))
@@ -111,7 +111,7 @@ struct ResizableSidebarPanes<Actions: View, Content: View>: View {
     }
     private func saveHeights() {
         guard let draggingHeights else { return }
-        store.workbenchLayout.explorerHeights = (store.workbenchLayout.explorerHeights ?? [:]).merging(draggingHeights) { _, new in new }
+        store.workbenchLayout.explorerHeights.merge(draggingHeights) { _, new in new }
         self.draggingHeights = nil
         store.saveWorkbench()
     }

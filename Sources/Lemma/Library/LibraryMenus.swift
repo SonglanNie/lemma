@@ -123,7 +123,7 @@ extension StudyStore {
         moveTo += [.separator, .action("New Section…", enabled: LibraryEditing.children(of: collection, in: collections).isEmpty) { [self] in
             let name = uniqueSectionName()
             moveLibraryCollection(id, toParent: name)
-            paneExpanded["collection-parent-" + name] = true
+            app.paneExpanded["collection-parent-" + name] = true
             if let section = libraryRows().first(where: { $0.id == "section:" + name }) { beginLibraryRename(section) }
         }]
         let kinds = LibraryKind.allCases.map { kind in

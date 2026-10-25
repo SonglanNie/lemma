@@ -127,7 +127,7 @@ final class ReferenceFlowTests: XCTestCase {
         let key = ReferenceKey(kind: .equation, number: "1.1")
         let resolved = await fixture.store.references?.resolve(key, from: 2)
         XCTAssertNotNil(resolved)
-        let reopened = StudyStore(root: fixture.support)
+        let reopened = StudyStore(app: AppModel(root: fixture.support))
         reopened.open(fixture.source)
         XCTAssertNotNil(reopened.references?.knownTarget(key), "A book's analysis is reused rather than repeated.")
         XCTAssertGreaterThan(reopened.references?.scannedPageCount ?? 0, 0)
@@ -461,7 +461,6 @@ final class ReferenceFlowTests: XCTestCase {
         let store: StudyStore
         let view: RegionPDFView
         let window: NSWindow
-        private let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
         private var coordinator: PDFReaderSurface.Coordinator?
 
         init(hosted: Bool = false) throws {
@@ -471,7 +470,7 @@ final class ReferenceFlowTests: XCTestCase {
             support = root.appendingPathComponent("support")
             originalBytes = try Self.pdf()
             try originalBytes.write(to: source)
-            store = StudyStore(root: support)
+            store = StudyStore(app: AppModel(root: support))
             store.open(source)
             if hosted {
                 window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1200, height: 800), styleMask: .titled, backing: .buffered, defer: false)
@@ -497,7 +496,6 @@ final class ReferenceFlowTests: XCTestCase {
             store.referencePeek = nil
             coordinator?.stop()
             window.close()
-            UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
             try? FileManager.default.removeItem(at: root)
         }
 

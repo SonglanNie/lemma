@@ -58,12 +58,11 @@ struct ReaderWindow: View {
         .overlay(alignment: .bottomTrailing) { NotificationsOverlay(store: store).padding(.bottom, VSMetrics.statusBarHeight) }
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowReader { window in
-            store.mainWindow = window
+            store.attach(window)
             if let window { TitleBarCoordinator.shared.attach(window); fullScreen = window.styleMask.contains(.fullScreen) }
-            store.fitWindowToScreen()
         })
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in fullScreen = true }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in fullScreen = false }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { if $0.object as? NSWindow === store.mainWindow { fullScreen = true } }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { if $0.object as? NSWindow === store.mainWindow { fullScreen = false } }
         .navigationTitle(store.workspace?.title ?? "Lemma")
     }
 
@@ -206,13 +205,13 @@ struct ReaderWindow: View {
                             showAnnotations: store.reader.showAnnotations, recallMask: store.reader.recallMask,
                             foldedProofs: Set(workspace.foldedProofs), understood: Set(workspace.understood))
                             .tutorialAnchor(.page)
-                        if store.showMinimap { PageMinimap(store: store).tutorialAnchor(.minimap) }
+                        if store.app.showMinimap { PageMinimap(store: store).tutorialAnchor(.minimap) }
                         OverviewRuler(store: store).tutorialAnchor(.overviewRuler)
                     }
-                    .overlay(alignment: .top) { StickyStatementBar(store: store).padding(.trailing, store.showMinimap ? 110 : 14) }
+                    .overlay(alignment: .top) { StickyStatementBar(store: store).padding(.trailing, store.app.showMinimap ? 110 : 14) }
                     .overlay(alignment: .top) { if store.debug != nil { DebugToolbar(store: store).padding(.top, 8) } }
                     .overlay(alignment: .topTrailing) {
-                        if FindController.shared.isVisible { FindWidget(store: store).padding(.top, 8).padding(.trailing, store.showMinimap ? 118 : 22) }
+                        if FindController.shared.isVisible, FindController.shared.store === store { FindWidget(store: store).padding(.top, 8).padding(.trailing, store.app.showMinimap ? 118 : 22) }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The gutter and minimap draw past their frames while scrolling; keep them off the tab bar.

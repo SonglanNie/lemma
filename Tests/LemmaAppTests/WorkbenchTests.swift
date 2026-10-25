@@ -34,7 +34,7 @@ final class WorkbenchTests: XCTestCase {
         XCTAssertNil(store.workspace)
         XCTAssertTrue(store.tabs.isEmpty)
         XCTAssertEqual(store.navigatorSection, .library, "With no book open the sidebar shows the library.")
-        XCTAssertEqual(UserDefaults.standard.stringArray(forKey: "openTabs"), [])
+        XCTAssertEqual(try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.app.sessionURL)).windows.first?.bookIDs, [])
     }
 
     /// A tab dropped on another takes its place in either direction. Dragged to the right, it landed before the tab it was
@@ -228,8 +228,6 @@ final class WorkbenchFixture {
     let paper: URL
     let store: StudyStore
     let window: NSWindow
-    private let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-    private let previousTabs = UserDefaults.standard.object(forKey: "openTabs")
 
     init(hosted: Bool = false) throws {
         _ = NSApplication.shared
@@ -238,7 +236,7 @@ final class WorkbenchFixture {
         paper = root.appendingPathComponent("Paper.pdf")
         try Self.writeBook(to: book)
         try Self.writePaper(to: paper)
-        store = StudyStore(root: root.appendingPathComponent("support"))
+        store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.urlOpener = { _ in }
         window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1300, height: 860), styleMask: .titled, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -265,8 +263,6 @@ final class WorkbenchFixture {
     func close() {
         store.referencePeek = nil; store.palette = nil
         window.close()
-        UserDefaults.standard.set(previous, forKey: "lastWorkspaceID")
-        UserDefaults.standard.set(previousTabs, forKey: "openTabs")
         try? FileManager.default.removeItem(at: root)
     }
 
