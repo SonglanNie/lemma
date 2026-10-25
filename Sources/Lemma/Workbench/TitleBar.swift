@@ -97,7 +97,7 @@ private struct LayoutControls: View {
                               store.workbenchLayout.sidebarPosition = store.workbenchLayout.sidebarPosition == .left ? .right : .left; store.saveWorkbench()
                           },
                           .action("Activity Bar", checked: store.workbenchLayout.activityBar) { store.workbenchLayout.activityBar.toggle(); store.saveWorkbench() },
-                          .action("Minimap", checked: store.showMinimap) { store.showMinimap.toggle() },
+                          .action("Minimap", checked: store.app.showMinimap) { store.app.showMinimap.toggle() },
                           .separator,
                           .action("Color Theme…", shortcut: "⌥⌘T") { store.showThemePicker() },
                           .action("Settings", shortcut: "⌘,") { store.openSettingsEditor() }]
@@ -151,58 +151,70 @@ enum TrafficLights {
     }
 }
 
-/// Keeps the window controls in place as the window resizes, enters and leaves full screen.
+/// Keeps each window's controls in place as it resizes, enters and leaves full screen, and sets its title bar up for
+/// the workbench style. Every window has its own state: `attach` runs at each redraw of each window.
 @MainActor
 final class TitleBarCoordinator {
     static let shared = TitleBarCoordinator()
-    private var observers: [NSObjectProtocol] = []
-    private var watches: [NSKeyValueObservation] = []
-    private weak var window: NSWindow?
+    private var windows: [ObjectIdentifier: WindowState] = [:]
+    private var closing: NSObjectProtocol?
 
-    /// The title bar container's height before the VS Code style changed it, to give it back in the Classic style.
-    private var originalHeight: CGFloat?
-    /// The frame to keep while SwiftUI adds or removes the Classic toolbar after a switch of style.
-    private var keptFrame: (frame: NSRect, until: Date)?
-    /// The style the window was last set up for. The window is set up again only when it changes: `attach` runs at
-    /// every redraw of the window, and setting it up each time kept undoing the reader's own resizing and moves.
-    private var configuredStyle: WorkbenchStyle?
+    @MainActor private final class WindowState {
+        var observers: [NSObjectProtocol] = []
+        var watches: [NSKeyValueObservation] = []
+        /// The frame to keep while SwiftUI adds or removes the Classic toolbar after a switch of style.
+        var keptFrame: (frame: NSRect, until: Date)?
+        /// The style the window was last set up for. The window is set up again only when it changes: setting it up at
+        /// every redraw kept undoing the reader's own resizing and moves.
+        var configuredStyle: WorkbenchStyle?
+    }
 
     func attach(_ window: NSWindow) {
         let style = ThemeManager.shared.style
-        let isNewWindow = self.window !== window
-        if isNewWindow || configuredStyle != style {
+        let key = ObjectIdentifier(window)
+        let isNewWindow = windows[key] == nil
+        let state = windows[key] ?? WindowState()
+        if isNewWindow || state.configuredStyle != style {
             // Only a switch of style in a window already on screen keeps its frame (AppKit moves it when the toolbar
-            // comes or goes); at launch the frame is the app's to set.
-            configure(window, keepFrame: !isNewWindow && configuredStyle != nil)
-            configuredStyle = style
+            // comes or goes); when a window opens the frame is the app's to set.
+            configure(window, state: state, keepFrame: !isNewWindow)
+            state.configuredStyle = style
         } else if style == .vscode {
             TrafficLights.place(in: window)
         }
         guard isNewWindow else { return }
-        self.window = window
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers.removeAll()
+        windows[key] = state
+        if closing == nil {
+            closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { notification in
+                guard let window = notification.object as? NSWindow else { return }
+                let key = ObjectIdentifier(window)
+                MainActor.assumeIsolated {
+                    guard let state = TitleBarCoordinator.shared.windows.removeValue(forKey: key) else { return }
+                    for observer in state.observers { NotificationCenter.default.removeObserver(observer) }
+                }
+            }
+        }
         let names: [Notification.Name] = [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification, NSWindow.didExitFullScreenNotification,
                                           NSWindow.didBecomeKeyNotification, NSWindow.didChangeScreenNotification]
         for name in names {
             let endsLiveResize = name == NSWindow.didEndLiveResizeNotification
-            observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
+            state.observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak state, weak window] _ in
                 MainActor.assumeIsolated {
-                    guard let window else { return }
+                    guard let window, let state else { return }
                     // A size the reader chose is never undone.
-                    if endsLiveResize { self?.keptFrame = nil }
-                    if let kept = self?.keptFrame, Date() < kept.until, !window.inLiveResize, window.frame != kept.frame, !window.styleMask.contains(.fullScreen) {
+                    if endsLiveResize { state.keptFrame = nil }
+                    if let kept = state.keptFrame, Date() < kept.until, !window.inLiveResize, window.frame != kept.frame, !window.styleMask.contains(.fullScreen) {
                         window.setFrame(kept.frame, display: true)
                     }
                     if ThemeManager.shared.style == .vscode { TitleBarCoordinator.restoreTransparency(window); TrafficLights.place(in: window) }
                 }
             })
         }
-        // SwiftUI sets the title bar up again while it builds the scene (after this ran at launch): put the VS Code
-        // style's transparent title bar back whenever that happens, or the native bar covers Lemma's own. Key-value
-        // observation hears of each change; the window's every update (`didUpdateNotification`, posted for each event
-        // while Lemma is in front) is not watched for it any more.
-        watches = [window.observe(\.titlebarAppearsTransparent) { window, _ in
+        // SwiftUI sets the title bar up again while it builds the scene (after this ran when the window opened): put the
+        // VS Code style's transparent title bar back whenever that happens, or the native bar covers Lemma's own.
+        // Key-value observation hears of each change; the window's every update (`didUpdateNotification`, posted for
+        // each event while Lemma is in front) is not watched for it any more.
+        state.watches = [window.observe(\.titlebarAppearsTransparent) { window, _ in
             MainActor.assumeIsolated { TitleBarCoordinator.restoreTransparency(window) }
         }, window.observe(\.titleVisibility) { window, _ in
             MainActor.assumeIsolated { TitleBarCoordinator.restoreTransparency(window) }
@@ -221,9 +233,7 @@ final class TitleBarCoordinator {
     }
 
     /// VS Code: a transparent title bar under Lemma's own, full-size content. Classic: the native title bar and toolbar.
-    private func configure(_ window: NSWindow, keepFrame: Bool) {
-        let container = window.standardWindowButton(.closeButton)?.superview?.superview
-        if originalHeight == nil, let container { originalHeight = container.frame.height }
+    private func configure(_ window: NSWindow, state: WindowState, keepFrame: Bool) {
         // Changing the title bar and toolbar makes AppKit keep the content's size and move the frame: keep the frame.
         let frame = window.frame
         let fullScreen = window.styleMask.contains(.fullScreen)
@@ -240,11 +250,11 @@ final class TitleBarCoordinator {
             window.standardWindowButton(.closeButton)?.superview?.needsLayout = true
         }
         guard !fullScreen, keepFrame else { return }
-        if keptFrame == nil || Date() >= keptFrame!.until { keptFrame = (frame, Date().addingTimeInterval(1.5)) }
+        if state.keptFrame == nil || Date() >= state.keptFrame!.until { state.keptFrame = (frame, Date().addingTimeInterval(1.5)) }
         if window.frame != frame { window.setFrame(frame, display: true) }
         for delay in [0.0, 0.15, 0.5] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak window] in
-                guard let window, let kept = self?.keptFrame, window.frame != kept.frame, !window.styleMask.contains(.fullScreen) else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak state, weak window] in
+                guard let window, let kept = state?.keptFrame, window.frame != kept.frame, !window.styleMask.contains(.fullScreen) else { return }
                 window.setFrame(kept.frame, display: true)
             }
         }

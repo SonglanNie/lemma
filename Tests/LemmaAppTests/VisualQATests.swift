@@ -18,9 +18,8 @@ final class VisualQATests: XCTestCase {
         guard FileManager.default.fileExists(atPath: pdf.path) else { throw XCTSkip("Set LEMMA_VISUAL_QA_PDF to a readable PDF.") }
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
-        let store = StudyStore(root: root)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = StudyStore(app: AppModel(root: root))
         store.urlOpener = { _ in }
         store.open(pdf)
         let window = NSWindow(contentRect: CGRect(x: 40, y: 40, width: 1440, height: 900), styleMask: [.titled, .resizable, .closable], backing: .buffered, defer: false)

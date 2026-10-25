@@ -89,8 +89,7 @@ final class AskAgainTests: XCTestCase {
     private func fixture() throws -> (StudyStore, URL) {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        addTeardownBlock { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("fixture.pdf")
         let document = PDFDocument()
@@ -100,7 +99,7 @@ final class AskAgainTests: XCTestCase {
             return true
         }
         document.insert(try XCTUnwrap(PDFPage(image: image)), at: 0); XCTAssertTrue(document.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support")); store.open(source)
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); store.open(source)
         store.questions.loginShellPath = { [] }
         store.questions.keys = MemoryAPIKeyStore()
         store.reader.selection = (0, CGRect(x: 20, y: 35, width: 240, height: 60), "X transpose X"); store.addNote()

@@ -62,7 +62,7 @@ extension StudyStore {
             add("Help: Lemma Guide › \(guide.title)", "graduationcap") { [self] in TutorialCenter.shared.open(self, guide: guide.id) }
         }
         add("Help: What’s New in Lemma", "info.circle") { [self] in openSpecial(.releaseNotes) }
-        add(showMinimap ? "View: Hide Minimap" : "View: Show Minimap", "rectangle.righthalf.inset.filled") { [self] in showMinimap.toggle() }
+        add(app.showMinimap ? "View: Hide Minimap" : "View: Show Minimap", "rectangle.righthalf.inset.filled") { [self] in app.showMinimap.toggle() }
         add("View: Toggle Zen Mode", "eye", "⌥⌘Z", when: book) { [self] in toggleFocus() }
         add("View: Toggle Maximized Panel", "chevron.up", when: book) { [self] in if !showPanel { showPanel = true }; panelMaximized.toggle() }
         add("Notifications: Show Notifications", "bell") { [self] in showNotificationCenter = true }
@@ -200,7 +200,7 @@ extension StudyStore {
         case .index: "structure.index"
         default: nil
         }
-        if let pane { paneExpanded[pane] = true }
+        if let pane { app.paneExpanded[pane] = true }
     }
 
     func cycleTab(_ step: Int) {

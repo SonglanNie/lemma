@@ -52,8 +52,8 @@ final class MigrationTests: XCTestCase {
         let session = try? JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("workbench.json"))) as? [String: Any]
         let openBooks = (session?["bookIDs"] as? [String]) ?? []
 
-        let store = StudyStore(root: root)
-        store.restore()
+        let store = StudyStore(app: AppModel(root: root))
+        store.app.restore()
         for _ in 0..<60 where store.libraries.updatedAt == nil { try await Task.sleep(for: .milliseconds(100)) }
         try await Task.sleep(for: .milliseconds(500))
 

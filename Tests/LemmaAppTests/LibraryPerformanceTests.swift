@@ -9,7 +9,7 @@ import LemmaCore
 /// (a JSON file for the results); add LEMMA_LIBPERF_BOOK (an analysed PDF) and LEMMA_LIBPERF_ANALYSIS (its
 /// analysis.json, from `LemmaIndexer --analyze`) to measure the palette and Look Up as well.
 final class LibraryPerformanceTests: XCTestCase {
-    private let keys = ["workbench.panes", "lastWorkspaceID", "openTabs", "library.sort"]
+    private let keys = ["workbench.panes", "library.sort"]
 
     @MainActor
     func testMeasureLibraryTreePaletteAndLookUp() async throws {
@@ -53,7 +53,7 @@ final class LibraryPerformanceTests: XCTestCase {
             try repository.save(book)
         }
         UserDefaults.standard.set(["collection-lib1": true, "collection-lib2": true, "library-folder-lib1:Part 1": true], forKey: "workbench.panes")
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         try store.libraries.replace(collections)
         store.libraries.start()
         let deadline = Date().addingTimeInterval(120)
@@ -70,9 +70,9 @@ final class LibraryPerformanceTests: XCTestCase {
         })
         results["pdf_count_ms"] = Self.median((0..<40).map { _ in Self.ms { _ = store.libraryPDFCount } })
         results["rows_visible"] = store.libraryRows().count
-        var expanded = store.paneExpanded
+        var expanded = store.app.paneExpanded
         for collection in collections { expanded["collection-" + collection.id] = true }
-        store.paneExpanded = expanded
+        store.app.paneExpanded = expanded
         results["tree_expanded_ms"] = Self.median((0..<20).map { step in
             store.library[1].reading.pageIndex = 100 + step
             return Self.ms { _ = store.libraryRows() }

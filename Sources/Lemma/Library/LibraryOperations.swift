@@ -150,13 +150,13 @@ extension StudyStore {
         return libraries.titles[libraries.key(of: path)] ?? LibraryPaths.title(of: path)
     }
 
-    /// Renames a studied book everywhere it shows: its workspace, its tab and its side tabs.
+    /// Renames a studied book everywhere it shows: its workspace, its tab and its side tabs, in every window.
     func setBookTitle(_ id: String, to title: String) {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        if workspace?.id == id {
-            workspace?.title = title
-            flush()
+        if let showing = app.windows.first(where: { $0.workspace?.id == id }) {
+            showing.workspace?.title = title
+            showing.flush()
         } else if var book = (try? repository.load(id: id)) ?? library.first(where: { $0.id == id }) {
             book.title = title
             do {
@@ -164,9 +164,11 @@ extension StudyStore {
                 if let index = library.firstIndex(where: { $0.id == id }) { library[index] = book }
             } catch { self.error = "Could not rename the book: \(error.localizedDescription)"; return }
         }
-        for index in tabs.indices where tabs[index].id == id { tabs[index].title = title }
-        for index in sideEditors.indices {
-            if case var .page(state) = sideEditors[index], state.bookID == id { state.title = title; sideEditors[index] = .page(state) }
+        for store in app.windows {
+            for index in store.tabs.indices where store.tabs[index].id == id { store.tabs[index].title = title }
+            for index in store.sideEditors.indices {
+                if case var .page(state) = store.sideEditors[index], state.bookID == id { state.title = title; store.sideEditors[index] = .page(state) }
+            }
         }
         saveWorkbench()
     }
@@ -259,7 +261,7 @@ extension StudyStore {
             let bookmark = try? URL(fileURLWithPath: path).bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
             moved[book.id] = LibrarySourceResolution(originalPath: book.sourcePath, path: path, bookmark: bookmark)
         }
-        if !moved.isEmpty { relinkSources(moved) }
+        if !moved.isEmpty { app.relinkSources(moved) }
         libraries.relocateEntries(from: old, to: new)
         do { try libraries.relocateTitles(from: old, to: new) } catch { self.error = "Could not save names in Lemma: \(error.localizedDescription)" }
         let relocated = LibraryEditing.relocating(old, to: new, in: libraries.collections)
@@ -270,12 +272,12 @@ extension StudyStore {
     /// Open folders stay open after a rename.
     private func renameFolderExpansion(from old: String, to new: String) {
         let oldName = URL(fileURLWithPath: old).lastPathComponent, newName = URL(fileURLWithPath: new).lastPathComponent
-        for (key, value) in paneExpanded where key.hasPrefix("library-folder-") {
+        for (key, value) in app.paneExpanded where key.hasPrefix("library-folder-") {
             guard let colon = key.firstIndex(of: ":") else { continue }
             let relative = key[key.index(after: colon)...].split(separator: "/", omittingEmptySubsequences: false).map(String.init)
             guard relative.last == oldName || relative.contains(oldName) else { continue }
             let renamed = relative.map { $0 == oldName ? newName : $0 }.joined(separator: "/")
-            paneExpanded[String(key[...colon]) + renamed] = value
+            app.paneExpanded[String(key[...colon]) + renamed] = value
         }
     }
 
@@ -412,7 +414,7 @@ extension StudyStore {
         let collection = LibraryCollection(title: title, kind: kind, parent: parent, sources: sources)
         editLibraryCollections("New Library") { $0 + [collection] }
         guard libraries.collections.contains(where: { $0.id == collection.id }) else { return nil }
-        paneExpanded["collection-" + collection.id] = true
+        app.paneExpanded["collection-" + collection.id] = true
         return collection.id
     }
 
@@ -428,7 +430,7 @@ extension StudyStore {
             if let index = collectionID.flatMap({ id in result.firstIndex { $0.id == id } }) { result.insert(collection, at: index + 1) } else { result.append(collection) }
             return result
         }
-        paneExpanded["collection-" + collection.id] = true
+        app.paneExpanded["collection-" + collection.id] = true
         return collection.id
     }
 
@@ -442,7 +444,7 @@ extension StudyStore {
     func moveLibraryCollection(_ id: String, toParent parent: String?, before anchor: String? = nil) {
         guard LibraryEditing.canMove(id, toParent: parent, in: libraries.collections) else { return }
         editLibraryCollections("Move Library") { LibraryEditing.moving(collection: id, toParent: parent, before: anchor, in: $0) }
-        if let parent { paneExpanded["collection-parent-" + parent] = true }
+        if let parent { app.paneExpanded["collection-parent-" + parent] = true }
     }
 
     func setLibraryKind(_ id: String, _ kind: LibraryKind) {
@@ -477,7 +479,7 @@ extension StudyStore {
                 var collection = collection; collection.parent = title; return collection
             }
         }
-        if let expanded = paneExpanded.removeValue(forKey: "collection-parent-" + name) { paneExpanded["collection-parent-" + title] = expanded }
+        if let expanded = app.paneExpanded.removeValue(forKey: "collection-parent-" + name) { app.paneExpanded["collection-parent-" + title] = expanded }
     }
 
     // MARK: Confirmations

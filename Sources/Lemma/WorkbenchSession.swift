@@ -12,11 +12,12 @@ struct WorkbenchLayout: Codable, Equatable {
     var activityBar = true
     var sidebarWidth: Double = 264
     var inspectorWidth: Double = 370
-    /// Sizes by pane id throughout the workbench. The existing key keeps older sessions compatible.
-    var explorerHeights: [String: Double]? = nil
+    /// Sizes by pane id throughout the workbench.
+    var explorerHeights: [String: Double] = [:]
 }
 
-/// Editor state belongs to a book, rather than to whichever book happens to be in front.
+/// Editor state belongs to a book, rather than to whichever book happens to be in front; it moves with the book from
+/// window to window.
 struct BookEditorState: Codable {
     var editors: [SideEditor]
     var activeEditorID: String?
@@ -26,16 +27,16 @@ struct BookEditorState: Codable {
     var hierarchyKey: ReferenceKey?
     var hierarchyDirection: HierarchyDirection
     var inspectorWasHidden: Bool
-    /// 2.0: breakpoints and watch expressions of Run and Debug (absent in earlier sessions).
-    var breakpoints: [LineBreakpoint]? = nil
-    var watch: [String]? = nil
+    /// Breakpoints and watch expressions of Run and Debug.
+    var breakpoints: [LineBreakpoint]
+    var watch: [String]
 }
 
-/// Kept in the library's support folder, so isolated QA copies and other libraries have their own session.
-struct WorkbenchSession: Codable {
+/// One window's workbench as it is saved: its tabs, the editors beside the page with no book open, its layout.
+struct WindowSession: Codable, Equatable {
+    var id: UUID
     var bookIDs: [String] = []
     var activeBookID: String?
-    var books: [String: BookEditorState] = [:]
     var homeEditors: [SideEditor] = []
     var activeHomeEditorID: String?
     var projectID: UUID?
@@ -45,27 +46,33 @@ struct WorkbenchSession: Codable {
     var showPanel = false
     var panelTab: PanelTab = .references
     var navigator: NavigatorSection = .contents
-    /// 2.0: Welcome, Settings and other special editors open in the main group, and the one in front.
-    var specialTabs: [SpecialEditor]? = nil
-    var activeSpecial: SpecialEditor? = nil
+    /// Welcome, Settings and other special editors open in the main group, and the one in front.
+    var specialTabs: [SpecialEditor] = []
+    var activeSpecial: SpecialEditor?
+    /// The window's frame on the screen.
+    var frame: CGRect?
+}
+
+/// Kept in the library's support folder, so isolated QA copies and other libraries have their own session.
+struct WorkbenchSession: Codable {
+    var windows: [WindowSession] = []
+    var books: [String: BookEditorState] = [:]
 }
 
 @MainActor
 extension StudyStore {
-    var sessionURL: URL { repository.root.appendingPathComponent("workbench.json") }
-
     func rememberBookEditors() {
         guard let id = workspace?.id else { return }
-        workbench.books[id] = BookEditorState(editors: sideEditors, activeEditorID: activeSideEditorID,
+        app.session.books[id] = BookEditorState(editors: sideEditors, activeEditorID: activeSideEditorID,
             selectedNoteID: selectedNoteID, studySection: studySection, referencesQuery: referencesQuery,
             hierarchyKey: hierarchyKey, hierarchyDirection: hierarchyDirection, inspectorWasHidden: labHidInspector,
             breakpoints: breakpoints, watch: watchExpressions)
     }
 
     func restoreBookEditors(_ book: StudyWorkspace) {
-        guard let saved = workbench.books[book.id] else { labHidInspector = false; breakpoints = []; watchExpressions = []; return }
-        breakpoints = saved.breakpoints ?? []
-        watchExpressions = saved.watch ?? []
+        guard let saved = app.session.books[book.id] else { labHidInspector = false; breakpoints = []; watchExpressions = []; return }
+        breakpoints = saved.breakpoints
+        watchExpressions = saved.watch
         sideEditors = saved.editors.filter { editor in
             switch editor {
             case let .page(state):
@@ -97,26 +104,31 @@ extension StudyStore {
         }
     }
 
-    /// Writes the editor session when it changed (it is compared with what was last written, so the many calls made
-    /// while working cost an encoding of a few kilobytes and no disk write).
-    func saveWorkbench() {
-        guard sessionWritable else { return }
-        rememberBookEditors()
+    /// Writes the session when it changed: this window's workbench beside the others'.
+    func saveWorkbench() { app.saveSession() }
+
+    /// This window's workbench as the session saves it. The editors beside the page with no book open are kept while a
+    /// book is open, and the panels shown before Zen Mode while it is on.
+    var windowSession: WindowSession {
         // Tabs of books whose saved notes could not be read stay in the session, for when they can be read again.
-        workbench.bookIDs = tabs.map(\.id) + preservedTabIDs.filter { id in !tabs.contains { $0.id == id } }
-        workbench.activeBookID = workspace?.id
-        if workspace == nil { workbench.homeEditors = sideEditors; workbench.activeHomeEditorID = activeSideEditorID }
-        workbench.projectID = selectedProjectID; workbench.layout = workbenchLayout
-        if !focusMode { workbench.showLibrary = showLibrary; workbench.showStudy = showStudy; workbench.showPanel = showPanel }
-        workbench.panelTab = panelTab; workbench.navigator = navigatorSection
-        workbench.specialTabs = specialTabs; workbench.activeSpecial = activeSpecial
-        do {
-            let data = try sessionEncoder.encode(workbench)
-            guard data != lastSessionData else { return }
-            if lastSessionData == nil { try FileManager.default.createDirectory(at: repository.root, withIntermediateDirectories: true) }
-            try data.write(to: sessionURL, options: .atomic)
-            lastSessionData = data
-        } catch { self.error = "Could not save the editor session: \(error.localizedDescription)" }
+        savedWindow.bookIDs = tabs.map(\.id) + preservedTabIDs.filter { id in !tabs.contains { $0.id == id } }
+        savedWindow.activeBookID = workspace?.id
+        if workspace == nil { savedWindow.homeEditors = sideEditors; savedWindow.activeHomeEditorID = activeSideEditorID }
+        savedWindow.projectID = selectedProjectID; savedWindow.layout = workbenchLayout
+        if !focusMode { savedWindow.showLibrary = showLibrary; savedWindow.showStudy = showStudy; savedWindow.showPanel = showPanel }
+        savedWindow.panelTab = panelTab; savedWindow.navigator = navigatorSection
+        savedWindow.specialTabs = specialTabs; savedWindow.activeSpecial = activeSpecial
+        if let frame = mainWindow?.frame, hasWindow { savedWindow.frame = frame }
+        return savedWindow
+    }
+
+    /// A new window lays out its workbench as the window it comes from does: the same side bars, panel and sizes (as
+    /// they were before Zen Mode, if that window is in it).
+    func takeLayout(of source: StudyStore) {
+        let saved = source.windowSession
+        workbenchLayout = saved.layout
+        showLibrary = saved.showLibrary; showStudy = saved.showStudy; showPanel = saved.showPanel
+        panelTab = saved.panelTab; navigatorSection = saved.navigator
     }
 
     /// A tab dropped on another takes that tab's place, so a drag to the right lands after the tab dropped on (it landed
@@ -130,11 +142,16 @@ extension StudyStore {
     }
 
     /// A drop on the main group's tab bar, on a tab or after the last one (no target): a book's tab, dragged as
-    /// `lemma-tab:<id>`, moves there.
+    /// `lemma-tab:<id>`, moves there. A tab from another window brings its book here.
     func dropBookTab(_ values: [String], onto targetID: String?) -> Bool {
         guard let value = values.first, value.hasPrefix("lemma-tab:") else { return false }
-        moveTab(String(value.dropFirst("lemma-tab:".count)), onto: targetID); return true
+        let id = String(value.dropFirst("lemma-tab:".count))
+        if tabs.contains(where: { $0.id == id }) { moveTab(id, onto: targetID) } else { app.moveBook(id, to: self, onto: targetID) }
+        return true
     }
+
+    /// A tab can go to a window of its own unless it is the window's only editor.
+    var canMoveTabToNewWindow: Bool { tabs.count + specialTabs.count > 1 }
 
     /// A drop on a side editor's tab: another side editor's tab, dragged as `lemma-side:<id>`, takes its place.
     func dropSideTab(_ values: [String], onto targetID: String) -> Bool {

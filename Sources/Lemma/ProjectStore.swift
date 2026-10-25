@@ -4,17 +4,16 @@ import LemmaCore
 
 @MainActor
 extension StudyStore {
-    var projectRepository: ProjectRepository { ProjectRepository(root: repository.root) }
     var currentProject: ResearchProject? { selectedProjectID.flatMap { project($0) } }
     var activeProjects: [ResearchProject] { projects.filter { !$0.archived } }
     func project(_ id: UUID) -> ResearchProject? { projects.first { $0.id == id } }
 
     @discardableResult
     func newProject(title: String = "Untitled Project", question: String = "") -> UUID? {
-        guard projectsWritable else { return nil }
+        guard app.projectsWritable else { return nil }
         let project = ResearchProject(title: title, question: question, bookIDs: workspace.map { [$0.id] } ?? [])
-        projects.insert(project, at: 0); projectsDirty = true
-        flushProjects(); openProject(project.id); reveal(.projects)
+        projects.insert(project, at: 0); app.projectsDirty = true
+        app.flushProjects(); openProject(project.id); reveal(.projects)
         return project.id
     }
 
@@ -26,38 +25,19 @@ extension StudyStore {
         fitPageIfOverflowing()
     }
 
-    func updateProject(_ id: UUID, _ edit: (inout ResearchProject) -> Void) {
-        guard projectsWritable, let index = projects.firstIndex(where: { $0.id == id }) else { return }
-        edit(&projects[index]); projects[index].updatedAt = .now
-        projectsDirty = true
-        projectSaveTask?.cancel()
-        projectSaveTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            self?.flushProjects()
-        }
-    }
-
-    func flushProjects() {
-        projectSaveTask?.cancel(); projectSaveTask = nil
-        guard projectsWritable, projectsDirty else { return }
-        do { try projectRepository.save(projects); projectsDirty = false }
-        catch { self.error = "Could not save the project: \(error.localizedDescription)" }
-    }
-
     func addBookToProject(_ bookID: String, projectID: UUID) {
-        updateProject(projectID) { if !$0.bookIDs.contains(bookID) { $0.bookIDs.append(bookID) } }
-        flushProjects()
+        app.updateProject(projectID) { if !$0.bookIDs.contains(bookID) { $0.bookIDs.append(bookID) } }
+        app.flushProjects()
     }
 
     func removeBookFromProject(_ bookID: String, projectID: UUID) {
-        updateProject(projectID) { $0.bookIDs.removeAll { $0 == bookID } }
-        flushProjects()
+        app.updateProject(projectID) { $0.bookIDs.removeAll { $0 == bookID } }
+        app.flushProjects()
     }
 
     /// Archive is reversible and leaves the project's text and all its source images on disk.
     func archiveProject(_ id: UUID, archived: Bool) {
-        updateProject(id) { $0.archived = archived }; flushProjects()
+        app.updateProject(id) { $0.archived = archived }; app.flushProjects()
         if archived {
             closeSideEditor("project:\(id)")
             if selectedProjectID == id { selectedProjectID = nil }
@@ -68,51 +48,51 @@ extension StudyStore {
     /// Capture into the project rather than creating a question note in the book.
     func collectSelection(projectID: UUID? = nil) {
         guard let book = workspace, let document, let (pageIndex, rectangle, quote) = reader.selection,
-              let page = document.page(at: pageIndex), projectsWritable else { return }
+              let page = document.page(at: pageIndex), app.projectsWritable else { return }
         let id = projectID ?? selectedProjectID ?? newProject()
         guard let id, let project = project(id) else { return }
         do {
             let data = try PDFRegionRenderer.png(page: page, region: PageRegion(rectangle))
             let name = "\(UUID().uuidString).png"
-            try projectRepository.saveImage(data, projectID: id, name: name)
+            try app.projectRepository.saveImage(data, projectID: id, name: name)
             let title = labLabel(pageIndex: pageIndex, region: rectangle, page: page)
             let anchor = SourceAnchor(pageIndex: pageIndex, pageLabel: printedLabel(for: pageIndex) ?? String(pageIndex + 1),
                                       region: PageRegion(rectangle), quote: quote, imageName: name)
             let source = ProjectPassage(number: project.nextSourceNumber, bookID: book.id, bookTitle: book.title,
                 title: title, section: breadcrumb().last?.title ?? "", anchor: anchor)
-            updateProject(id) { $0.collect(source) }; flushProjects()
+            app.updateProject(id) { $0.collect(source) }; app.flushProjects()
             openProject(id)
             status = "\(source.sourceLabel) collected in \(project.title)."
         } catch { self.error = "Could not collect the passage: \(error.localizedDescription)" }
     }
 
     func collectNote(_ note: StudyNote, projectID: UUID) {
-        guard let book = workspace, let project = project(projectID), projectsWritable else { return }
+        guard let book = workspace, let project = project(projectID), app.projectsWritable else { return }
         do {
             let data = try Data(contentsOf: repository.assetURL(workspaceID: book.id, name: note.anchor.imageName))
             let name = "\(UUID().uuidString).png"
-            try projectRepository.saveImage(data, projectID: projectID, name: name)
+            try app.projectRepository.saveImage(data, projectID: projectID, name: name)
             var anchor = note.anchor; anchor.imageName = name
             anchor.pageLabel = printedLabel(for: anchor.pageIndex) ?? anchor.pageLabel
             let source = ProjectPassage(number: project.nextSourceNumber, bookID: book.id, bookTitle: book.title,
                 title: note.title, section: "", anchor: anchor, annotation: note.body)
-            updateProject(projectID) { $0.collect(source) }; flushProjects(); openProject(projectID)
+            app.updateProject(projectID) { $0.collect(source) }; app.flushProjects(); openProject(projectID)
         } catch { self.error = "Could not collect the note's source: \(error.localizedDescription)" }
     }
 
     func appendProjectCitation(_ source: ProjectPassage, projectID: UUID) {
-        updateProject(projectID) { $0.synthesis += ($0.synthesis.isEmpty ? "" : "\n\n") + source.citation + " " }
+        app.updateProject(projectID) { $0.synthesis += ($0.synthesis.isEmpty ? "" : "\n\n") + source.citation + " " }
     }
 
     func removeProjectPassage(_ passageID: UUID, projectID: UUID, undoManager: UndoManager? = nil) {
         guard let source = project(projectID)?.passages.first(where: { $0.id == passageID }),
               let index = project(projectID)?.passages.firstIndex(where: { $0.id == passageID }) else { return }
         let undoManager = undoManager ?? mainWindow?.undoManager
-        updateProject(projectID) { $0.passages.removeAll { $0.id == passageID } }; flushProjects()
+        app.updateProject(projectID) { $0.passages.removeAll { $0.id == passageID } }; app.flushProjects()
         undoManager?.registerUndo(withTarget: self) { store in
             MainActor.assumeIsolated {
-                store.updateProject(projectID) { $0.passages.insert(source, at: min(index, $0.passages.count)) }
-                store.flushProjects()
+                store.app.updateProject(projectID) { $0.passages.insert(source, at: min(index, $0.passages.count)) }
+                store.app.flushProjects()
                 // Undoing registers the removal again, so Redo removes the passage once more.
                 undoManager?.registerUndo(withTarget: store) { store in
                     MainActor.assumeIsolated { store.removeProjectPassage(passageID, projectID: projectID, undoManager: undoManager) }
@@ -128,18 +108,18 @@ extension StudyStore {
         guard let book = library.first(where: { $0.id == source.bookID }) else {
             error = "This source's book is not in the library on this Mac. The saved crop is still in the project."; return
         }
-        let show = { [weak self] in
-            guard let self, self.workspace?.id == source.bookID else { return }
-            self.openProject(projectID)
+        let show = { (store: StudyStore) in
+            guard store.workspace?.id == source.bookID else { return }
+            store.openProject(projectID)
             // Once the page view shows the source's book (its file may take a moment to be read), never inside another one.
-            self.whenShowing(source.bookID) { $0.reader.go(to: source.anchor) }
+            store.whenShowing(source.bookID) { $0.reader.go(to: source.anchor) }
         }
-        if workspace?.id == source.bookID { show() } else { reopenBook(book) { opened in if opened { show() } } }
+        if workspace?.id == source.bookID { show(self) } else { reopenBook(book) { store in if let store { show(store) } } }
     }
 
-    /// The books a search reads, with the book in front as it is now (its library row follows it at a distance).
+    /// The books a search reads, each book in front of a window as it is now (its library row follows it at a distance).
     func booksForSearch(_ scope: PageSearchScope) -> [StudyWorkspace] {
-        let current = { (book: StudyWorkspace) in book.id == self.workspace?.id ? self.workspace ?? book : book }
+        let current = app.current
         switch scope {
         case .library: return library.map(current)
         case .current: return workspace.map { [$0] } ?? []
@@ -157,13 +137,13 @@ extension StudyStore {
 
     func exportProject(_ id: UUID) {
         guard let project = project(id) else { return }
-        flushProjects()
+        app.flushProjects()
         let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.canCreateDirectories = true; panel.prompt = "Export"
         panel.message = "Choose a folder for the project's Markdown, source images and project data."
         if panel.runModal() == .OK, let destination = panel.url {
             let folder = destination.appendingPathComponent("Lemma Research \(ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "-"))")
-            do { try projectRepository.export(project, to: folder); lastExportURL = folder; status = "Project exported with its sources." }
+            do { try app.projectRepository.export(project, to: folder); lastExportURL = folder; status = "Project exported with its sources." }
             catch { self.error = "Could not export the project: \(error.localizedDescription)" }
         }
     }

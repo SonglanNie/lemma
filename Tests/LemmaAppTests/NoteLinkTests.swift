@@ -25,7 +25,7 @@ final class NoteLinkTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = StudyStore(root: root)
+        let store = StudyStore(app: AppModel(root: root))
         store.workspace = fixture()
         let source = try XCTUnwrap(store.workspace?.notes[0])
         let target = try XCTUnwrap(store.workspace?.notes[1])
@@ -79,7 +79,7 @@ final class NoteLinkTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let store = StudyStore(root: root)
+        let store = StudyStore(app: AppModel(root: root))
         store.workspace = fixture()
         let notes = try XCTUnwrap(store.workspace?.notes)
         store.selectedNoteID = notes[0].id

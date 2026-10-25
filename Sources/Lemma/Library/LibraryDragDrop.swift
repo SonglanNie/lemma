@@ -211,11 +211,11 @@ extension StudyStore {
             editLibraryCollections(ids.count == 1 ? "Move Library" : "Move Libraries") { collections in
                 ids.reduce(collections) { LibraryEditing.moving(collection: $1, toParent: parent, before: before, in: $0) }
             }
-            if let parent { paneExpanded["collection-parent-" + parent] = true
-                if let host = LibraryEditing.host(of: parent, in: libraries.collections) { paneExpanded["collection-" + host.id] = true } }
+            if let parent { app.paneExpanded["collection-parent-" + parent] = true
+                if let host = LibraryEditing.host(of: parent, in: libraries.collections) { app.paneExpanded["collection-" + host.id] = true } }
         case let .addToLibrary(urls, collectionID):
             addToLibrary(urls, collectionID: collectionID)
-            paneExpanded["collection-" + collectionID] = true
+            app.paneExpanded["collection-" + collectionID] = true
         case let .copyIntoFolder(urls, folder): copyIntoLibraryFolder(urls, folder: folder)
         case let .newLibraries(folders, parent):
             let created = folders.map { folder in
@@ -223,7 +223,7 @@ extension StudyStore {
                                   sources: [LibrarySource(path: folder.path, kind: .folder, bookmark: LibraryPaths.bookmark(folder.path))])
             }
             editLibraryCollections(created.count == 1 ? "New Library" : "New Libraries") { $0 + created }
-            for collection in created { paneExpanded["collection-" + collection.id] = true }
+            for collection in created { app.paneExpanded["collection-" + collection.id] = true }
             if let first = created.first { libraryTree.selection = ["library:" + first.id]; libraryTree.cursor = "library:" + first.id; libraryTree.scrollTarget = "library:" + first.id }
         case .none: break
         }

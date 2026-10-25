@@ -59,7 +59,7 @@ enum QAPerf {
             "pageStart": startIndex + 1, "pageEnd": document.index(for: view.currentPage ?? endPage) + 1,
             "magnification": rounded(scrollView.magnification), "displayMode": view.displayMode.rawValue,
             "lineNumbers": store.reader.showLineNumbers, "links": store.reader.showReferenceLinks, "counts": store.reader.showReferenceCounts,
-            "analysis": store.analysis?.analysis != nil, "minimap": store.showMinimap,
+            "analysis": store.analysis?.analysis != nil, "minimap": store.app.showMinimap,
             "busyMs": ["mean": rounded(mean(busy)), "p50": rounded(percentile(busy, 0.5)), "p95": rounded(percentile(busy, 0.95)),
                        "p99": rounded(percentile(busy, 0.99)), "max": rounded(busy.max() ?? 0), "total": rounded(busy.reduce(0, +))],
             "framesOver8ms": busy.filter { $0 > 1000 / 120 }.count, "framesOver16ms": busy.filter { $0 > 1000 / 60 }.count,

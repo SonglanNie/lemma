@@ -10,8 +10,6 @@ final class ContinuationFlowTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let oldLastWorkspace = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(oldLastWorkspace, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("scanned-study.pdf")
         let image = NSImage(size: NSSize(width: 600, height: 360), flipped: false) { rect in
@@ -26,7 +24,7 @@ final class ContinuationFlowTests: XCTestCase {
         XCTAssertTrue(pdf.write(to: source))
         let sourceBytes = try Data(contentsOf: source)
         let support = root.appendingPathComponent("support")
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         store.open(source)
         XCTAssertTrue(store.document?.page(at: 0)?.string?.isEmpty ?? true, "This fixture must need image recognition.")
         store.reader.selection = (0, CGRect(x: 15, y: 170, width: 570, height: 100), "")
@@ -65,7 +63,7 @@ final class ContinuationFlowTests: XCTestCase {
         XCTAssertEqual(original.experiments.first?.id, record.id)
         XCTAssertFalse(store.preparedPrompt.contains(record.prediction), "Experiments are not automatically sent to the provider.")
         store.flush()
-        let restored = StudyStore(root: support); restored.open(source)
+        let restored = StudyStore(app: AppModel(root: support)); restored.open(source)
         let workspace = try XCTUnwrap(restored.workspace)
         XCTAssertEqual(workspace.schemaVersion, 10)
         XCTAssertEqual(workspace.noteLinks.map(\.id), [link.id])

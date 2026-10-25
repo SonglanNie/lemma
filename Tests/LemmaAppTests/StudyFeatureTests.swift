@@ -41,8 +41,6 @@ final class StudyFeatureTests: XCTestCase {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let oldLastWorkspace = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(oldLastWorkspace, forKey: "lastWorkspaceID") }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("study.pdf")
         let bytes = NSMutableData()
@@ -58,7 +56,7 @@ final class StudyFeatureTests: XCTestCase {
         }
         context.closePDF(); try (bytes as Data).write(to: source)
         let originalBytes = try Data(contentsOf: source)
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         let document = try XCTUnwrap(store.document)
         let view = RegionPDFView(frame: CGRect(x: 0, y: 0, width: 600, height: 700))
@@ -138,7 +136,7 @@ final class StudyFeatureTests: XCTestCase {
         store.toggleFocus(); XCTAssertFalse(store.showLibrary); XCTAssertTrue(store.showStudy)
         store.flush(); store.libraryNoteQuery = "design matrix"
         XCTAssertEqual(store.libraryNoteResults.count, 1)
-        let restored = StudyStore(root: root.appendingPathComponent("support")); restored.open(source)
+        let restored = StudyStore(app: AppModel(root: root.appendingPathComponent("support"))); restored.open(source)
         XCTAssertEqual(restored.workspace?.bookmarks.count, 2); XCTAssertEqual(restored.workspace?.highlights.count, 1)
         XCTAssertEqual(restored.currentNote?.kind, .notation); XCTAssertEqual(restored.currentNote?.scope, "This chapter")
         XCTAssertEqual(try Data(contentsOf: source), originalBytes)

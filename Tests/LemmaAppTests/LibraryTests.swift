@@ -10,8 +10,7 @@ final class LibraryTests: XCTestCase {
     func testProgressCoversAndClosingABookKeepTheLibrary() async throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("library.pdf")
         let document = PDFDocument()
@@ -24,7 +23,7 @@ final class LibraryTests: XCTestCase {
             document.insert(try XCTUnwrap(PDFPage(image: image)), at: index)
         }
         XCTAssertTrue(document.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         store.workspace?.reading.pageIndex = 1
         store.reader.selection = (1, CGRect(x: 30, y: 180, width: 200, height: 60), "")
@@ -42,12 +41,13 @@ final class LibraryTests: XCTestCase {
 
         store.closeBook()
         XCTAssertNil(store.workspace); XCTAssertNil(store.document); XCTAssertNil(store.references)
-        XCTAssertNil(UserDefaults.standard.string(forKey: "lastWorkspaceID"), "A closed book is not reopened at launch.")
+        XCTAssertNil(try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: store.app.sessionURL)).windows.first?.activeBookID,
+                     "A closed book is not reopened at launch.")
         XCTAssertEqual(store.library.map(\.id), [book.id])
         let home = NSHostingView(rootView: LibraryHome(store: store))
         home.frame = CGRect(x: 0, y: 0, width: 900, height: 700); home.layoutSubtreeIfNeeded()
 
-        let reloaded = StudyStore(root: root.appendingPathComponent("support"))
+        let reloaded = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         XCTAssertEqual(reloaded.library.first?.notes.filter { $0.isDue() }.count, 1)
         reloaded.reopen(try XCTUnwrap(reloaded.library.first))
         XCTAssertEqual(reloaded.workspace?.id, book.id)
@@ -63,8 +63,7 @@ final class MarginCardTests: XCTestCase {
     func testNotesBecomeMarginCardsWhenTheMarginHasRoom() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("margin.pdf")
         let document = PDFDocument()
@@ -75,7 +74,7 @@ final class MarginCardTests: XCTestCase {
         }
         document.insert(try XCTUnwrap(PDFPage(image: image)), at: 0)
         XCTAssertTrue(document.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         store.reader.selection = (0, CGRect(x: 25, y: 290, width: 240, height: 30), "")
         store.addNote(kind: .definition)
@@ -120,14 +119,13 @@ final class NeighborsRecordTests: XCTestCase {
     func testSimulationRecordPersistsAndExportsItsDataAndScript() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let source = root.appendingPathComponent("knn.pdf")
         let document = PDFDocument()
         document.insert(try XCTUnwrap(PDFPage(image: NSImage(size: NSSize(width: 200, height: 200), flipped: false) { rect in NSColor.white.setFill(); rect.fill(); return true })), at: 0)
         XCTAssertTrue(document.write(to: source))
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(source)
         store.reader.selection = (0, CGRect(x: 20, y: 20, width: 100, height: 60), "")
         store.addNote()
@@ -140,7 +138,7 @@ final class NeighborsRecordTests: XCTestCase {
         record.startingNeighbors = NeighborsSettings()
         XCTAssertTrue(store.saveExperiment(record, workspaceID: try XCTUnwrap(store.workspace?.id)))
 
-        let reopened = StudyStore(root: root.appendingPathComponent("support"))
+        let reopened = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         reopened.open(source)
         let saved = try XCTUnwrap(reopened.workspace?.notes.first?.experiments.first)
         XCTAssertEqual(saved.kind, .nearestNeighbors)
@@ -169,8 +167,7 @@ final class SourceLocationTests: XCTestCase {
     func testReopeningFollowsTheMostRecentlyOpenedCopy() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let previous = UserDefaults.standard.object(forKey: "lastWorkspaceID")
-        defer { UserDefaults.standard.set(previous, forKey: "lastWorkspaceID"); try? FileManager.default.removeItem(at: root) }
+        defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root.appendingPathComponent("temporary"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("stable"), withIntermediateDirectories: true)
         let first = root.appendingPathComponent("temporary/book.pdf"), second = root.appendingPathComponent("stable/book.pdf")
@@ -178,10 +175,10 @@ final class SourceLocationTests: XCTestCase {
         document.insert(try XCTUnwrap(PDFPage(image: NSImage(size: NSSize(width: 100, height: 100), flipped: false) { rect in NSColor.white.setFill(); rect.fill(); return true })), at: 0)
         XCTAssertTrue(document.write(to: first))
         try FileManager.default.copyItem(at: first, to: second)
-        let store = StudyStore(root: root.appendingPathComponent("support"))
+        let store = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         store.open(first)
         store.open(second)
-        let reopened = StudyStore(root: root.appendingPathComponent("support"))
+        let reopened = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
         reopened.reopen(try XCTUnwrap(reopened.library.first))
         let opened = URL(fileURLWithPath: try XCTUnwrap(reopened.workspace?.sourcePath)).resolvingSymlinksInPath().path
         XCTAssertEqual(opened, second.resolvingSymlinksInPath().path, "Both copies exist; the one opened last wins.")

@@ -198,18 +198,6 @@ extension StudyStore {
             : "Could not read the saved notes of \(failures.count) books: \(names)\(reason). Their files are kept as they are; the rest of the library is available."
     }
 
-    /// Saves, stops notebooks, questions and analysis helpers, and waits for the last writes: quitting, whether or not
-    /// the reader window is still open.
-    func prepareForTermination() {
-        guard !terminating else { return }
-        terminating = true
-        questions.shutdown()
-        flush()
-        lab.shutdownAll()
-        BookAnalysisModel.terminateHelpers()
-        repository.writer.waitUntilIdle()
-    }
-
     /// Closes the sheets the store presents, so quitting is not held up by one (AppKit does not quit under a sheet).
     func dismissSheets() {
         showQuestion = false; showBrowserSetup = false; showLibrarySources = false; showDependencyMap = false

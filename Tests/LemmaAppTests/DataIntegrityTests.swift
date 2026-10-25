@@ -11,17 +11,13 @@ import LemmaCore
 final class DataIntegrityTests: XCTestCase {
     private var root: URL!
     private var support: URL { root.appendingPathComponent("support") }
-    private let keys = ["lastWorkspaceID", "openTabs"]
-    private var saved: [String: Any] = [:]
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        for key in keys { saved[key] = UserDefaults.standard.object(forKey: key) }
     }
 
     override func tearDownWithError() throws {
-        for key in keys { UserDefaults.standard.set(saved[key], forKey: key) }
         try? FileManager.default.removeItem(at: root)
     }
 
@@ -48,7 +44,7 @@ final class DataIntegrityTests: XCTestCase {
 
     @MainActor private func store() -> StudyStore {
         _ = NSApplication.shared
-        let store = StudyStore(root: support)
+        let store = StudyStore(app: AppModel(root: support))
         store.urlOpener = { _ in }
         return store
     }
@@ -118,7 +114,7 @@ final class DataIntegrityTests: XCTestCase {
         let store = store()
         store.immediateHashLimit = 0
         var outcome: Bool?
-        XCTAssertEqual(store.openFile(large) { outcome = $0 }, .pending)
+        XCTAssertEqual(store.openFile(large) { outcome = $0 != nil }, .pending)
         XCTAssertNil(store.workspace, "Nothing is shown before the fingerprint is known.")
         XCTAssertTrue(store.status.hasPrefix("Opening “Large”"))
         let deadline = Date.now.addingTimeInterval(10)
@@ -176,13 +172,13 @@ final class DataIntegrityTests: XCTestCase {
 
         let restarted = self.store()
         XCTAssertEqual(restarted.library.map(\.id), [firstID], "One unreadable file does not empty the library.")
-        XCTAssertEqual(restarted.unreadableWorkspaces.map(\.id), [secondID])
-        restarted.restore()
+        XCTAssertEqual(restarted.app.unreadableWorkspaces.map(\.id), [secondID])
+        restarted.app.restore()
         XCTAssertTrue(restarted.notifications.contains { $0.severity == .error && $0.message.contains("“Second book”") })
         XCTAssertEqual(restarted.tabs.map(\.id), [firstID])
         restarted.flush()
-        let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.sessionURL))
-        XCTAssertEqual(session.bookIDs, [firstID, secondID], "The unreadable book keeps its place in the saved session.")
+        let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.app.sessionURL))
+        XCTAssertEqual(session.windows.first?.bookIDs, [firstID, secondID], "The unreadable book keeps its place in the saved session.")
         restarted.open(second)
         XCTAssertNotEqual(restarted.workspace?.id, secondID, "Its PDF is not opened over the unreadable notes.")
         XCTAssertEqual(try Data(contentsOf: manifest), broken, "The unreadable file is left as it was.")
@@ -228,7 +224,7 @@ final class DataIntegrityTests: XCTestCase {
 
         // After a restart only A is read; B's file has gone since.
         let store = self.store()
-        store.restore()
+        store.app.restore()
         XCTAssertEqual(store.workspace?.id, ids[0])
         XCTAssertEqual(store.tabs.map(\.id), ids)
         try FileManager.default.removeItem(at: urls[1])
@@ -293,13 +289,13 @@ final class DataIntegrityTests: XCTestCase {
         XCTAssertEqual(store.sideEditors.count, 1)
         store.flush()
         let restarted = self.store()
-        restarted.restore()
+        restarted.app.restore()
         XCTAssertEqual(restarted.sideEditors.count, 1)
         // Reopening the window from the Dock runs its onAppear again.
-        restarted.restore()
+        restarted.app.restore()
         XCTAssertEqual(restarted.sideEditors.count, 1, "The second restore must not replace the book's side tabs.")
         restarted.flush()
-        let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.sessionURL))
+        let session = try JSONDecoder().decode(WorkbenchSession.self, from: Data(contentsOf: restarted.app.sessionURL))
         XCTAssertEqual(session.books[try XCTUnwrap(restarted.workspace?.id)]?.editors.count, 1)
     }
 
