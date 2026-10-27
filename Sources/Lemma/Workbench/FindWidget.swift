@@ -182,8 +182,10 @@ struct FindWidget: View {
                 .font(.ui(12)).monospacedDigit().lineLimit(1)
                 .foregroundStyle(noResults(reader) ? theme[.errorForeground] : theme[.descriptionForeground])
                 .frame(minWidth: 78, alignment: .leading).padding(.leading, 6)
-            VSIconButton(icon: "arrow-up", help: "Previous Match (⇧⌘G)", enabled: !find.query.isEmpty) { find.previous() }
-            VSIconButton(icon: "arrow-down", help: "Next Match (⌘G)", enabled: !find.query.isEmpty) { find.next() }
+            // VS Code's find widget has arrows; the Classic interface steps with chevrons, as its page buttons and Mac find bars do.
+            let classic = ThemeManager.shared.style == .classic
+            VSIconButton(icon: classic ? "chevron-up" : "arrow-up", help: "Previous Match (⇧⌘G)", enabled: !find.query.isEmpty) { find.previous() }
+            VSIconButton(icon: classic ? "chevron-down" : "arrow-down", help: "Next Match (⌘G)", enabled: !find.query.isEmpty) { find.next() }
             VSIconButton(icon: "close", help: "Close (Escape)") { find.hide() }
         }
         .padding(.horizontal, 6).padding(.vertical, 5)
