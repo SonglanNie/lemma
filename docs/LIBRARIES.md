@@ -4,6 +4,8 @@ Lemma lists PDFs from watched folders in the Explorer's **Library** section and 
 
 Renaming a PDF or a watched folder in Finder updates its source path automatically, including PDFs added individually. Lemma keeps the book in its collection and preserves its notes, selected note and reading position. The source links survive an app restart; a PDF excluded from one library stays excluded after a rename. Removed or inaccessible sources are still reported in **Manage Sources** and the collection.
 
+Each file is its own book. A copy of a PDF under another name, with the same bytes (a signed copy, a filled-in form), opens in a tab of its own with its own notes and ink, and is named after its file. A PDF moved or renamed while Lemma was not watching keeps its book, and so does a PDF whose bytes change on disk.
+
 ## Default libraries
 
 A new Lemma has two libraries:
