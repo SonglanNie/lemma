@@ -639,6 +639,7 @@ final class RegionPDFView: PDFView {
         guard let target = super.hitTest(point) else { return nil }
         if target is NSScroller { return target }
         let event = NSApp.currentEvent
+        if PDFView.zoomsByScrolling(event) { return self }
         // PDFKit's page subviews otherwise consume the drag before our handler; scrolling and pinching still move the page.
         if controller?.regionMode == true || controller?.inkMode == true {
             return event.map { [.scrollWheel, .magnify, .smartMagnify, .gesture].contains($0.type) } == true ? target : self
@@ -856,6 +857,9 @@ final class RegionPDFView: PDFView {
     }
 
     private var overlayRefreshScheduled = false
+    /// A turn of the wheel with ⌘ is zooming the pages: the marks are laid out once at the step's new zoom, not at each
+    /// scroll PDFKit's zoom and the move back under the pointer make on the way.
+    private var zoomingByScrolling = false
 
     /// Brings the marks over the page up to date on the next turn of the run loop, once (after PDFKit's own layout).
     func scheduleOverlayRefresh() {
@@ -884,7 +888,7 @@ final class RegionPDFView: PDFView {
     /// Moves the marks with the pages while scrolling, in the same transaction as the scroll. Called synchronously from the
     /// clip view's bounds notification; a zoom or another layout lays them out again at once.
     func followScroll() {
-        if !selectionOverlay.followScroll(in: self) { updateOverlay() }
+        if !zoomingByScrolling, !selectionOverlay.followScroll(in: self) { updateOverlay() }
     }
 
     /// The current line's number in the gutter follows the reading position.
@@ -892,6 +896,14 @@ final class RegionPDFView: PDFView {
 
     /// The page marks are laid out again at the next update (the reader's notes, highlights or handwriting changed).
     func invalidateMarks() { selectionOverlay.invalidate() }
+
+    override func scrollWheel(with event: NSEvent) {
+        guard PDFView.zoomsByScrolling(event) else { super.scrollWheel(with: event); return }
+        zoomingByScrolling = true
+        zoom(byScrolling: event)
+        zoomingByScrolling = false
+        updateOverlay()
+    }
 
     override func mouseDown(with event: NSEvent) {
         hoverPreview.dismiss()
@@ -1440,15 +1452,22 @@ struct PDFReaderSurface: NSViewRepresentable {
         init(controller: ReaderController) { self.controller = controller }
         func observe(_ view: RegionPDFView) {
             // Visible pages change after layout too (a fold, a jump): the gutter and marks follow them.
+            // While a turn of the wheel zooms the view, the reader takes in the new zoom once it ends (`ScrollZoom`).
             for notification in [Notification.Name.PDFViewSelectionChanged, .PDFViewPageChanged, .PDFViewScaleChanged, .PDFViewVisiblePagesChanged] {
-                observations.append(NotificationCenter.default.addObserver(forName: notification, object: view, queue: .main) { [weak self] notification in
+                observations.append(NotificationCenter.default.addObserver(forName: notification, object: view, queue: .main) { [weak self, weak view] notification in
                     let selectionChanged = notification.name == .PDFViewSelectionChanged
                     MainActor.assumeIsolated {
                         if selectionChanged { self?.controller.updateSelection() }
-                        else { self?.controller.updatePage() }
+                        else if !ScrollZoom.isZooming(view) { self?.controller.updatePage() }
                     }
                 })
             }
+            observations.append(NotificationCenter.default.addObserver(forName: ScrollZoom.didEnd, object: view, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.controller.updatePage()
+                    self?.scheduleViewportUpdate()
+                }
+            })
             // PDFKit's context menu sets the display mode itself; the book must take that layout, or the next update of
             // this view would put the book's own back.
             observations.append(NotificationCenter.default.addObserver(forName: .PDFViewDisplayModeChanged, object: view, queue: .main) { [weak self, weak view] _ in
@@ -1468,7 +1487,7 @@ struct PDFReaderSurface: NSViewRepresentable {
                     // The marks over the page move with it in this transaction (a recall mask must never lag behind the
                     // answer it hides); what follows the reading position is coalesced to once per run-loop turn.
                     self?.controller.view?.followScroll()
-                    self?.scheduleViewportUpdate()
+                    if !ScrollZoom.isZooming(self?.controller.view) { self?.scheduleViewportUpdate() }
                 }
             }
         }
@@ -1508,5 +1527,98 @@ extension PDFView {
         let region = convert(rectangle, to: page).intersection(page.bounds(for: .cropBox))
         guard !region.isNull, region.width > 2, region.height > 2 else { return nil }
         return (document.index(for: page), region)
+    }
+
+    /// A scroll with ⌘ held zooms rather than scrolls, for a mouse that cannot pinch. Its hit test returns the PDF view
+    /// itself: PDFKit's scroll view inside would otherwise take the scroll and move the page.
+    static func zoomsByScrolling(_ event: NSEvent?) -> Bool {
+        event?.type == .scrollWheel && event?.modifierFlags.contains(.command) == true
+    }
+
+    /// Zooms by a ⌘-scroll (`ScrollZoom`) around the pointer. Each event sets the scale, as PDFgear's wheel does, so
+    /// PDFKit draws the pages sharp at every step.
+    func zoom(byScrolling event: NSEvent) {
+        guard let scrollView = documentView?.enclosingScrollView, scaleFactor > 0 else { return }
+        let scale = min(maxScaleFactor, max(minScaleFactor, scaleFactor * ScrollZoom.factor(for: event)))
+        let location = convert(event.locationInWindow, from: nil)
+        guard scale != scaleFactor, let anchor = ScrollZoom.begin(self, at: location) else { return }
+        if autoScales { autoScales = false }
+        scaleFactor = scale
+        // PDFKit zooms around the middle of the view: the point under the pointer when the turn began is put back under
+        // it, exactly. The clip view's constraint keeps the pages within their edges (and centres pages narrower than the
+        // view), but it also rounds to half a point of the page, which at 5000% is 25 points on the screen: the letters
+        // around the pointer shook at every step. Within that rounding the exact origin is kept.
+        let clip = scrollView.contentView
+        let moved = clip.convert(convert(anchor.point, from: anchor.page), from: self), held = clip.convert(location, from: self)
+        let origin = CGPoint(x: clip.bounds.minX + moved.x - held.x, y: clip.bounds.minY + moved.y - held.y)
+        let constrained = clip.constrainBoundsRect(CGRect(origin: origin, size: clip.bounds.size)).origin
+        clip.scroll(to: CGPoint(x: abs(constrained.x - origin.x) > 0.5 ? constrained.x : origin.x,
+                                y: abs(constrained.y - origin.y) > 0.5 ? constrained.y : origin.y))
+        scrollView.reflectScrolledClipView(clip)
+    }
+}
+
+/// How far a ⌘-scroll zooms: 6% a notch of the wheel, and as fast as a free-spinning wheel turns up to 2¹⁵ a second
+/// (a quarter of a doubling every 60th of a second, as fast as PDFgear zooms with the wheel): from 10% to 10000% in
+/// two thirds of a second. While the wheel turns, the marks over the pages are laid out at every step, and the rest of
+/// Lemma (the status bar, the panels, the saved place) takes in the new zoom once it has stopped for 0.2 s (`didEnd`):
+/// done at every step, that work took most of the time between two events of a fast turn.
+@MainActor
+enum ScrollZoom {
+    /// Posted with the PDF view as the object when a turn of the wheel that zoomed it has stopped.
+    static let didEnd = Notification.Name("LemmaScrollZoomDidEnd")
+    /// When the last ⌘-scroll arrived, which sets how far a fast turn may zoom.
+    private static var lastEvent: TimeInterval = 0
+    /// The PDF view zooming while the wheel turns, and the timer that ends its turn.
+    private static weak var zooming: PDFView?
+    private static var ending: Timer?
+    /// Where the pointer was, and the point of the page under it when the turn began.
+    private static var anchor: (location: CGPoint, page: PDFPage, point: CGPoint)?
+
+    static func isZooming(_ view: PDFView?) -> Bool { view != nil && zooming === view }
+
+    static func factor(for event: NSEvent) -> CGFloat {
+        let elapsed = event.timestamp - lastEvent
+        lastEvent = event.timestamp
+        guard event.momentumPhase == [], event.scrollingDeltaY != 0 else { return 1 }
+        // Scrolling up the page zooms in, as in PDFgear: rolling the wheel away without natural scrolling, toward you
+        // with it.
+        let up = event.scrollingDeltaY
+        // A wheel counts the lines macOS gives the event: one for a slow notch, whatever distance the mouse and its
+        // software give a notch (a tenth of a line to a line for a plain wheel; 13 points for an MX Master 3S, 71 through
+        // LinearMouse), and more for a fast turn, including the events macOS merged while Lemma was drawing. A trackpad or
+        // a Magic Mouse sends a swipe frame by frame, in phases, and counts 35 points a notch.
+        let lines = CGFloat(abs(event.cgEvent?.getIntegerValueField(.scrollWheelEventDeltaAxis1) ?? 0))
+        let notches = event.phase == [] ? (up > 0 ? 1 : -1) * max(1, lines) : up / 35
+        // The first event of a flick after a pause, which may carry a dozen lines, zooms at most 1.7×.
+        let limit = pow(2, 15 * min(max(elapsed, 1.0 / 120), 0.05))
+        return min(limit, max(1 / limit, pow(1.06, notches)))
+    }
+
+    /// Starts or continues the turn of the wheel zooming `view`, which ends once no ⌘-scroll has come for 0.2 s, and
+    /// returns the point of the page to keep under the pointer at `location`: the one under it when the turn began, or
+    /// when the pointer moved.
+    static func begin(_ view: PDFView, at location: CGPoint) -> (page: PDFPage, point: CGPoint)? {
+        if zooming !== view {
+            end()
+            zooming = view
+        }
+        ending?.invalidate()
+        let timer = Timer(timeInterval: 0.2, repeats: false) { _ in MainActor.assumeIsolated { end() } }
+        RunLoop.main.add(timer, forMode: .common)
+        ending = timer
+        if let anchor, anchor.location == location { return (anchor.page, anchor.point) }
+        guard let page = view.page(for: location, nearest: true) else { return nil }
+        let point = view.convert(location, to: page)
+        anchor = (location, page, point)
+        return (page, point)
+    }
+
+    /// Ends the turn of the wheel: Lemma takes in the new zoom.
+    static func end() {
+        ending?.invalidate(); ending = nil
+        guard let view = zooming else { return }
+        zooming = nil; anchor = nil
+        NotificationCenter.default.post(name: didEnd, object: view)
     }
 }

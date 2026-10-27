@@ -823,6 +823,10 @@ extension StudyStore {
             // Scrolls the reader through `pages` pages at `fps` (step points per frame) and writes <name>.json (see QAPerf).
             guard let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("QA folder") }
             try await QAPerf.scrollBench(store: self, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "scrollBench").json"))
+        case "zoomBench":
+            // A free spin of the wheel with ⌘ held over the reader; writes <name>.json (see QAPerf.zoomBench).
+            guard let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("QA folder") }
+            try await QAPerf.zoomBench(store: self, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "zoomBench").json"))
         case "wheel":
             // A trackpad gesture at x, y (points from the window's top left); writes <name>.json (see QAWheel).
             guard let window = mainWindow, let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("window") }

@@ -48,6 +48,9 @@ final class RegionSelectionOverlay: NSView {
     private var anchor: CGPoint = .zero
 
     private var pages: [Int: PageMarks] = [:]
+    /// Marks of the pages last removed that look the same at any zoom, kept for the next layout to move into place
+    /// (`reused`); those it does not take are removed when the update ends.
+    private var spare: [ReusableMark: NSView] = [:]
     private var visibleIndexes: [Int] = []
     private var noteViews: [UUID: (signature: String, view: NSView)] = [:]
     private var marginInputs: (pages: [Int], selected: UUID?)?
@@ -152,6 +155,8 @@ final class RegionSelectionOverlay: NSView {
         let current = currentLayout(view, controller: controller, document: document, documentView: documentView)
         if current != layout || !followScroll(in: view) {
             removePages(keeping: [])
+            // Marks drawn in the old colours are not reused.
+            if current.pageTheme != layout.pageTheme || current.appearance != layout.appearance { removeSpare() }
             layout = current
             anchor = view.convert(CGPoint.zero, from: documentView)
             setBoundsOrigin(.zero)
@@ -171,6 +176,7 @@ final class RegionSelectionOverlay: NSView {
             marginInputs = (indexes, controller.selectedNoteID)
             placeMarginNotes(visible, in: view, controller: controller, document: document)
         }
+        removeSpare()
         updateTransientMarks(in: view, controller: controller, document: document)
         updateFocusLine()
     }
@@ -187,6 +193,7 @@ final class RegionSelectionOverlay: NSView {
 
     private func clear() {
         removePages(keeping: [])
+        removeSpare()
         for (_, entry) in noteViews { entry.view.removeFromSuperview() }
         noteViews = [:]; marginInputs = nil; visibleIndexes = []
         layout = Layout()
@@ -198,9 +205,21 @@ final class RegionSelectionOverlay: NSView {
 
     private func removePages(keeping kept: Set<Int>) {
         for (index, marks) in pages where !kept.contains(index) {
-            marks.remove()
+            for (key, view) in marks.remove() { spare.updateValue(view, forKey: key)?.removeFromSuperview() }
             pages[index] = nil
         }
+    }
+
+    /// A mark laid out before that looks the same now, or a new one. A pinch or a turn of the wheel with ⌘ lays the
+    /// marks out at every step of the zoom; made and drawn again each time, the counts and fold controls of the dozen
+    /// pages in view at a small zoom took longer than the step.
+    private func reused<View: NSView>(_ key: ReusableMark, make: () -> View) -> View {
+        spare.removeValue(forKey: key) as? View ?? make()
+    }
+
+    private func removeSpare() {
+        for view in spare.values { view.removeFromSuperview() }
+        spare = [:]
     }
 
     /// Colours of the shape layers, resolved in the view's appearance and the page theme.
@@ -380,21 +399,28 @@ final class RegionSelectionOverlay: NSView {
             }
             if controller.showFoldControls, pageIndex == proof.start.pageIndex, let first = parts.first {
                 let rect = first.region.rect.applying(toView)
-                let control = GutterFoldControl(folded: folded, title: proof.statement?.title) { [weak controller] in controller?.onToggleProof?(proof.stableID) }
+                let key = ReusableMark.foldControl(ObjectIdentifier(controller), proof.stableID, folded: folded)
+                let control = reused(key) {
+                    GutterFoldControl(folded: folded, title: proof.statement?.title) { [weak controller] in controller?.onToggleProof?(proof.stableID) }
+                }
                 control.frame = CGRect(x: gutterX, y: rect.maxY - 15, width: 16, height: 16)
-                marks.place(control, in: self)
+                marks.place(control, in: self, as: key)
                 marks.foldControlFrames.append(control.frame)
             }
         }
         // Understood statements: a green check beside their label.
         for target in analysis.definitionsByPage[pageIndex] ?? [] where controller.understood.contains(target.key) {
             let anchor = target.anchor.rect.applying(toView)
-            let check = NSImageView(image: NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: "Understood")!)
-            check.contentTintColor = .systemGreen
-            check.toolTip = "\(target.key.title) · marked as understood"
-            check.setAccessibilityLabel("\(target.key.title) understood")
+            let key = ReusableMark.understood(ObjectIdentifier(controller), target.key)
+            let check = reused(key) {
+                let check = NSImageView(image: NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: "Understood")!)
+                check.contentTintColor = .systemGreen
+                check.toolTip = "\(target.key.title) · marked as understood"
+                check.setAccessibilityLabel("\(target.key.title) understood")
+                return check
+            }
             check.frame = CGRect(x: gutterX, y: anchor.midY - 8, width: 16, height: 16)
-            marks.place(check, in: self)
+            marks.place(check, in: self, as: key)
         }
     }
 
@@ -430,7 +456,10 @@ final class RegionSelectionOverlay: NSView {
             guard count > 0 || notes > 0 else { continue }
             // The count follows the page's type size, so it never outshouts the text it annotates.
             let fontSize = (min(10, max(7, 8.5 * (controller.view?.scaleFactor ?? 1))) * 2).rounded() / 2
-            let lens = ReferenceLensView(key: target.key, references: count, notes: notes, fontSize: fontSize) { [weak controller] key in controller?.onShowReferences?(key) }
+            let key = ReusableMark.lens(ObjectIdentifier(controller), target.key, references: count, notes: notes, fontSize: fontSize)
+            let lens = reused(key) {
+                ReferenceLensView(key: target.key, references: count, notes: notes, fontSize: fontSize) { [weak controller] key in controller?.onShowReferences?(key) }
+            }
             let anchor = target.anchor.rect.applying(toView)
             let size = lens.intrinsicContentSize
             var frame: CGRect
@@ -448,7 +477,7 @@ final class RegionSelectionOverlay: NSView {
                 frame = CGRect(x: anchor.minX, y: anchor.maxY + 1, width: size.width, height: size.height)
             }
             lens.frame = frame
-            marks.place(lens, in: self)
+            marks.place(lens, in: self, as: key)
         }
     }
 
@@ -700,6 +729,13 @@ final class RegionSelectionOverlay: NSView {
     }
 }
 
+/// A mark that looks the same at any zoom and is only moved by a new layout: what it shows, for which reader.
+private enum ReusableMark: Hashable {
+    case lens(ObjectIdentifier, ReferenceKey, references: Int, notes: Int, fontSize: CGFloat)
+    case foldControl(ObjectIdentifier, String, folded: Bool)
+    case understood(ObjectIdentifier, ReferenceKey)
+}
+
 /// One page's marks: the views and layers built for it, removed together when the page leaves the view or changes.
 @MainActor
 private final class PageMarks {
@@ -708,6 +744,7 @@ private final class PageMarks {
     var gutters: [GutterView] = []
     var layers: [CALayer] = []
     var views: [NSView] = []
+    var reusable: [(ReusableMark, NSView)] = []
     var lineHits: [(rect: CGRect, index: Int)] = []
     var foldControlFrames: [CGRect] = []
 
@@ -718,11 +755,18 @@ private final class PageMarks {
         views.append(view)
     }
 
-    func remove() {
+    func place(_ view: NSView, in overlay: NSView, as key: ReusableMark) {
+        if view.superview !== overlay { overlay.addSubview(view) }
+        reusable.append((key, view))
+    }
+
+    /// Removes the page's marks and returns those a new layout may move into place, still in the overlay.
+    func remove() -> [(ReusableMark, NSView)] {
         gutters.forEach { $0.removeFromSuperview() }
         layers.forEach { $0.removeFromSuperlayer() }
         views.forEach { $0.removeFromSuperview() }
-        gutters = []; layers = []; views = []
+        defer { gutters = []; layers = []; views = []; reusable = [] }
+        return reusable
     }
 }
 

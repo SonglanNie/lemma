@@ -566,6 +566,15 @@ final class PeekPDFView: PDFView {
     /// The line at the top of the preview before the reader resized it, kept there as the page is fitted again.
     private var pendingTop: (page: PDFPage, y: CGFloat)?
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let target = super.hitTest(point) else { return nil }
+        return !(target is NSScroller) && PDFView.zoomsByScrolling(NSApp.currentEvent) ? self : target
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if PDFView.zoomsByScrolling(event) { zoom(byScrolling: event) } else { super.scrollWheel(with: event) }
+    }
+
     /// Read before the frame changes: a taller preview keeps its bottom edge, so afterwards another line is at the top.
     override func setFrameSize(_ newSize: NSSize) {
         if fittedWidth != nil, pendingTop == nil, newSize != frame.size {

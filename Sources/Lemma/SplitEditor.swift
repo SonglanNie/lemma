@@ -248,10 +248,15 @@ final class SecondaryPDFView: PDFView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let target = super.hitTest(point) else { return nil }
+        if !(target is NSScroller), PDFView.zoomsByScrolling(NSApp.currentEvent) { return self }
         // PDFKit's page views would otherwise take a ⌘-drag as a text selection.
         if onFloatBox != nil, !(target is NSScroller), let event = NSApp.currentEvent, event.type == .leftMouseDown,
            event.modifierFlags.contains(.command) { return self }
         return target
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if PDFView.zoomsByScrolling(event) { zoom(byScrolling: event) } else { super.scrollWheel(with: event) }
     }
 
     override func mouseDown(with event: NSEvent) {

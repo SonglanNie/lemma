@@ -78,6 +78,33 @@ final class FloatingBoxTests: XCTestCase {
     }
 
     @MainActor
+    func testCommandScrollZoomsTheBoxWithinItsWindow() throws {
+        let fixture = try WorkbenchFixture()
+        defer { fixture.close() }
+        fixture.store.open(fixture.book)
+        let page = try XCTUnwrap(fixture.store.document?.page(at: 0))
+        let box = FloatingBox(bookID: "book", pageIndex: 0, region: PageRegion(x: 40, y: 200, width: 220, height: 120), title: "Box", frame: .zero)
+        let view = try XCTUnwrap(FloatingBoxView(box: box, page: page))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 440, height: 240), styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.close() }
+        view.layoutSubtreeIfNeeded()
+        var saved: Double?
+        view.onZoom = { saved = $0 }
+        let middle = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
+        for _ in 0..<5 { view.scrollWheel(with: try scrollEvent(1, at: middle, in: view)) }
+        XCTAssertEqual(view.zoom, pow(1.06, 5), accuracy: 0.01, "⌘-scroll zooms into the box.")
+        XCTAssertNil(saved, "The box keeps its zoom once the wheel stops.")
+        ScrollZoom.end()
+        XCTAssertEqual(saved ?? 0, Double(view.zoom), accuracy: 0.001, "The zoom is kept with the box.")
+        for _ in 0..<10 { view.scrollWheel(with: try scrollEvent(-1, at: middle, in: view)) }
+        ScrollZoom.end()
+        XCTAssertEqual(view.zoom, 1, "The box is never smaller than its window.")
+        XCTAssertEqual(view.scaleFactor, 2, accuracy: 0.01)
+    }
+
+    @MainActor
     func testTheBoxHoldsOnlyItsPartOfThePage() throws {
         let fixture = try WorkbenchFixture()
         defer { fixture.close() }

@@ -214,6 +214,7 @@ final class FloatingBoxView: PDFView {
         autoScales = false
         backgroundColor = PageThemeState.shared.theme.isDark ? NSColor(white: 0.085, alpha: 1) : .white
         self.document = document
+        NotificationCenter.default.addObserver(self, selector: #selector(scrollZoomEnded), name: ScrollZoom.didEnd, object: self)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -244,10 +245,21 @@ final class FloatingBoxView: PDFView {
         if event.phase == .ended || event.phase == [] { onZoom?(Double(zoom)) }
     }
 
-    override func scrollWheel(with event: NSEvent) {
-        super.scrollWheel(with: event)
-        rememberCenter()
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let target = super.hitTest(point) else { return nil }
+        return !(target is NSScroller) && PDFView.zoomsByScrolling(NSApp.currentEvent) ? self : target
     }
+
+    /// ⌘-scroll zooms around the pointer, within the same bounds as a pinch; the box keeps its zoom once the wheel stops.
+    override func scrollWheel(with event: NSEvent) {
+        guard PDFView.zoomsByScrolling(event) else { super.scrollWheel(with: event); rememberCenter(); return }
+        guard event.momentumPhase == [] else { return }
+        zoom(byScrolling: event)
+        zoom = min(8, max(1, scaleFactor / fitScale))
+        if zoom == 1 { center = CGPoint(x: region.midX, y: region.midY); apply() } else { rememberCenter() }
+    }
+
+    @objc private func scrollZoomEnded() { onZoom?(Double(zoom)) }
 
     private func rememberCenter() {
         center = convert(CGPoint(x: bounds.midX, y: bounds.midY), to: page)
