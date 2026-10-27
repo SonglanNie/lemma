@@ -329,7 +329,7 @@ final class StudyStore {
 
     func open(_ url: URL, toSide: Bool = false) { openFile(url, toSide: toSide) }
 
-    /// Opens a PDF in front, or beside the reader. Its identity (the SHA-256 of its bytes) comes from the fingerprint cache
+    /// Opens a PDF in front, or beside the reader. Its fingerprint (the SHA-256 of its bytes) comes from the fingerprint cache
     /// when the file is known and unchanged, is read at once for a small local file, and otherwise off the main thread
     /// while the status bar says so (a long book, a network volume, a file in iCloud Drive). `then` runs once the book is
     /// in front (true) or could not be opened (false); a request replaced by a newer one runs neither.
@@ -388,13 +388,12 @@ final class StudyStore {
         return .pending
     }
 
-    /// Opens a PDF whose fingerprint is known: its workspace (or a new one), its document (shared with any other view of
-    /// the same bytes), a password when it is locked.
+    /// Opens a PDF whose fingerprint is known: its book's workspace (or a new one), its document (shared with any other
+    /// view of the book), a password when it is locked.
     @discardableResult
     private func finishOpen(_ url: URL, fingerprint: String, scoped: Bool, toSide: Bool, quiet: Bool, then: ((StudyStore?) -> Void)?) -> OpenOutcome {
         do {
-            // The workspace named by these bytes, or one that follows them since its PDF changed on disk.
-            let id = library.first(where: { $0.id == fingerprint })?.id ?? library.first(where: { $0.fingerprint == fingerprint })?.id ?? fingerprint
+            let (id, isCopy) = bookID(for: url, fingerprint: fingerprint)
             // A book open in another window is shown there: a book is open in one window only.
             if !toSide, let owner = app.owner(of: id), owner !== self {
                 if scoped { url.stopAccessingSecurityScopedResource() }
@@ -403,8 +402,8 @@ final class StudyStore {
             }
             let pdf: PDFDocument
             if let cached = documents[id] ?? sideDocuments[id] {
-                // The same bytes are open already, perhaps from another path: one document, so its reference index,
-                // which holds the document weakly, keeps working.
+                // The book is open already, perhaps beside the reader: one document, so its reference index, which holds
+                // the document weakly, keeps working.
                 pdf = cached
             } else {
                 guard let loaded = PDFDocument(url: url) else { throw CocoaError(.fileReadCorruptFile) }
@@ -438,13 +437,16 @@ final class StudyStore {
                 workspace.fingerprint = fingerprint
                 forgetDerivedData(workspace.id)
             } else {
+                let fileTitle = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " ")
+                // A copy has the same PDF title as the book it copies; only its file name tells the two apart.
+                let pdfTitle = !isCopy
+                    ? DocumentTitle.fromMetadata(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String, fileName: url.lastPathComponent)
+                    : nil
                 workspace = StudyWorkspace(
-                    id: fingerprint,
+                    id: id,
                     // A name given in the Library before the PDF was first opened becomes the book's title; then the
                     // PDF's own title when it is a real one ("Attention Is All You Need" for 1706.03762v7.pdf); then the file name.
-                    title: libraries.titles[LibraryPaths.key(url.path)]
-                        ?? DocumentTitle.fromMetadata(pdf.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String, fileName: url.lastPathComponent)
-                        ?? url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_", with: " "),
+                    title: libraries.titles[LibraryPaths.key(url.path)] ?? pdfTitle ?? fileTitle,
                     sourcePath: url.path, sourceBookmark: nil, fingerprint: fingerprint)
             }
             if workspace.sourcePath != url.path { workspace.sourcePath = url.path }
@@ -496,6 +498,34 @@ final class StudyStore {
         if !quiet { self.error = "Could not open this PDF: \(error.localizedDescription)" }
         then?(nil)
         return .failed
+    }
+
+    /// The book this file is. A book is a file: its own, under its path or its bookmark, or one with these bytes whose
+    /// file was moved or renamed here. Another file with the same bytes (a signed copy, a filled-in form) is a book of its
+    /// own, with a new id, and `isCopy` says so.
+    private func bookID(for url: URL, fingerprint: String) -> (id: String, isCopy: Bool) {
+        let sameBytes = library.filter { $0.id == fingerprint || $0.fingerprint == fingerprint }
+        guard !sameBytes.isEmpty else { return (fingerprint, false) }
+        let key = LibraryPaths.key(url.path)
+        if let book = sameBytes.first(where: { LibraryPaths.key($0.sourcePath) == key }) { return (book.id, false) }
+        let stamp = FileStamp(url)
+        func leadsHere(_ resolved: URL) -> Bool {
+            if LibraryPaths.key(resolved.path) == key { return true }
+            guard let stamp, let other = FileStamp(resolved) else { return false }
+            return other.device == stamp.device && other.inode == stamp.inode
+        }
+        // Only books whose recorded file is gone can have become this one; a bookmark that finds the file elsewhere keeps it there.
+        let moved = sameBytes.filter { !FileManager.default.fileExists(atPath: $0.sourcePath) }.compactMap { book -> (book: StudyWorkspace, here: Bool)? in
+            var stale = false
+            guard let data = book.sourceBookmark, let resolved = try? URL(resolvingBookmarkData: data, options: [.withoutUI, .withoutMounting],
+                                                                           relativeTo: nil, bookmarkDataIsStale: &stale) else { return (book, false) }
+            if leadsHere(resolved) { return (book, true) }
+            return FileManager.default.fileExists(atPath: resolved.path) ? nil : (book, false)
+        }
+        if let match = moved.first(where: \.here) ?? moved.max(by: { $0.book.lastOpenedAt < $1.book.lastOpenedAt }) {
+            return (match.book.id, false)
+        }
+        return (UUID().uuidString, true)
     }
 
     /// A library book whose PDF is this file with other bytes: at the same path, or moved as well, with a bookmark that
