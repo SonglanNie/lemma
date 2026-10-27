@@ -222,6 +222,13 @@ final class FloatingBoxView: PDFView {
     /// The scale at which the whole box fits the view; the window keeps the box's proportions, so it fills it.
     private var fitScale: CGFloat { min(bounds.width / max(region.width, 1), bounds.height / max(region.height, 1)) }
 
+    /// The zoom PDFKit's scale stands for, after a pinch or a ⌘-scroll. Held at its least, the scale reads back a
+    /// rounding above `fitScale`, which is still the box at its fitted size.
+    private var scaledZoom: CGFloat {
+        let zoom = scaleFactor / fitScale
+        return zoom < 1 + 1e-9 ? 1 : min(8, zoom)
+    }
+
     override func layout() {
         super.layout()
         guard bounds.width > 1, bounds.size != fittedSize else { return }
@@ -240,7 +247,7 @@ final class FloatingBoxView: PDFView {
 
     override func magnify(with event: NSEvent) {
         super.magnify(with: event)
-        zoom = min(8, max(1, scaleFactor / fitScale))
+        zoom = scaledZoom
         if zoom == 1 { center = CGPoint(x: region.midX, y: region.midY); apply() } else { rememberCenter() }
         if event.phase == .ended || event.phase == [] { onZoom?(Double(zoom)) }
     }
@@ -255,7 +262,7 @@ final class FloatingBoxView: PDFView {
         guard PDFView.zoomsByScrolling(event) else { super.scrollWheel(with: event); rememberCenter(); return }
         guard event.momentumPhase == [] else { return }
         zoom(byScrolling: event)
-        zoom = min(8, max(1, scaleFactor / fitScale))
+        zoom = scaledZoom
         if zoom == 1 { center = CGPoint(x: region.midX, y: region.midY); apply() } else { rememberCenter() }
     }
 

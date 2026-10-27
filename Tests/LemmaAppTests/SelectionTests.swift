@@ -109,7 +109,7 @@ final class SelectionTests: XCTestCase {
         let pointer = view.convert(zoomIn[0].locationInWindow, from: nil)
         let page = try XCTUnwrap(view.page(for: pointer, nearest: true)), anchor = view.convert(pointer, to: page)
         zoomIn.forEach(view.scrollWheel)
-        XCTAssertEqual(view.scaleFactor, fitted * pow(1.06, 3), accuracy: 0.01, "Three notches up the page zoom in by 6% each.")
+        XCTAssertEqual(view.scaleFactor, fitted * pow(ScrollZoom.step, 3), accuracy: 0.01, "Three notches up the page zoom in a step each.")
         XCTAssertFalse(view.autoScales, "The page no longer fits itself to the window.")
         let held = view.convert(anchor, from: page)
         XCTAssertEqual(held.x, pointer.x, accuracy: 2, "The point under the pointer stays there.")
@@ -121,10 +121,10 @@ final class SelectionTests: XCTestCase {
         ScrollZoom.end()
         XCTAssertEqual(view.scaleFactor, fitted, accuracy: 0.01, "Three notches back zoom out as far.")
         // A free spin to the largest zoom: the letters around the pointer stay where they are on the screen at every step,
-        // where the clip view's rounding to half a point of the page shook them by up to 50 points.
+        // where the clip view's rounding to a pixel, counted in points of the page, shook them by up to 50 points.
         let spinAnchor = view.convert(pointer, to: page)
         for _ in 0..<40 {
-            view.scrollWheel(with: try scrollEvent(400, precise: true, lines: 60, gap: 1.0 / 60, at: middle, in: view))
+            view.scrollWheel(with: try scrollEvent(400, precise: true, lines: 60, at: middle, in: view))
             let held = view.convert(spinAnchor, from: page)
             XCTAssertEqual(hypot(held.x - pointer.x, held.y - pointer.y), 0, accuracy: 0.5, "At \(view.scaleFactor), the point under the pointer stays there.")
         }
@@ -132,27 +132,25 @@ final class SelectionTests: XCTestCase {
         ScrollZoom.end()
     }
 
-    /// Each kind of wheel zooms by an even 6% a notch turned slowly, whatever distance its software gives a notch: as
-    /// recorded from an MX Master 3S (13 points a notch, or 71 through LinearMouse), and as macOS reports a plain wheel
-    /// (a tenth of a line or a line). A fast turn counts its lines, merged events included, up to 2¹⁵ a second.
+    /// Each event of a wheel zooms one step, however far or fast it turns: as recorded from an MX Master 3S (13 points a
+    /// notch, or 71 through LinearMouse, and 20 to 132 lines an event of its free spin), and as macOS reports a plain wheel
+    /// (a tenth of a line or a line, and more lines the faster it turns).
     @MainActor
     func testScrollZoomStepsEvenlyForEveryKindOfWheel() throws {
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(1)), 1.06, accuracy: 0.001, "A plain wheel's notch")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(0.1)), 1.06, accuracy: 0.001, "A slow notch reported as a tenth of a line")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(-1)), 1 / 1.06, accuracy: 0.001, "A notch back zooms out")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(13, precise: true)), 1.06, accuracy: 0.001, "An MX Master 3S's notch")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(71, precise: true)), 1.06, accuracy: 0.001, "The same notch through LinearMouse")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(35, precise: true, phase: 2)), 1.06, accuracy: 0.001, "A trackpad counts twice as far")
+        let step = ScrollZoom.step
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(1)), step, accuracy: 0.001, "A plain wheel's notch")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(0.1)), step, accuracy: 0.001, "A slow notch reported as a tenth of a line")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(12)), step, accuracy: 0.001, "A fast notch macOS counts as 12 lines")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(-1)), 1 / step, accuracy: 0.001, "A notch back zooms out")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(13, precise: true)), step, accuracy: 0.001, "An MX Master 3S's notch")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(71, precise: true)), step, accuracy: 0.001, "The same notch through LinearMouse")
+        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(35, precise: true, phase: 2)), step, accuracy: 0.001, "A trackpad's 35 points")
         XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(30, precise: true, momentum: 2)), 1, "Momentum after the fingers lift does not zoom")
         // The free-spinning wheel of an MX Master: 60 events a second of 20 to 132 lines each, as recorded.
-        let spin = try (0..<40).map { try scrollEvent(400, precise: true, lines: [20, 60, 132][$0 % 3], gap: 1.0 / 60) }
-        let zoom = spin.reduce(CGFloat(1)) { $0 * ScrollZoom.factor(for: $1) }
-        XCTAssertEqual(zoom, 1024, accuracy: 10, "Two thirds of a second of free spin zoom 1000×, from 10% to 10000%, as in PDFgear")
-        // Lemma took 40 ms to draw the last step, and macOS merged the 40 lines turned meanwhile into one event.
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(400, precise: true, lines: 40, gap: 0.04)), pow(2, 15 * 0.04), accuracy: 0.001,
-                       "Merged events zoom as far as the time they took allows")
-        XCTAssertEqual(ScrollZoom.factor(for: try scrollEvent(800, precise: true, lines: 80)), pow(2, 0.75), accuracy: 0.001,
-                       "The first event after a pause zooms at most 1.7×")
+        let spin = try (0..<40).map { try scrollEvent(400, precise: true, lines: [20, 60, 132][$0 % 3]) }
+        for event in spin { XCTAssertEqual(ScrollZoom.factor(for: event), step, accuracy: 0.001, "Every event of the spin zooms one step") }
+        XCTAssertEqual(spin.reduce(CGFloat(1)) { $0 * ScrollZoom.factor(for: $1) }, 1024, accuracy: 1,
+                       "Two thirds of a second of free spin zoom 1000×, from 10% to 10000%, as in PDFgear")
     }
 
     @MainActor
@@ -241,15 +239,12 @@ final class SelectionTests: XCTestCase {
     }
 }
 
-/// Spaces the scroll events the tests make, as a hand would; `ScrollZoom` limits how fast events close together zoom.
-@MainActor private var scrollClock: TimeInterval = 1000
-
 /// A scroll as macOS delivers it, up the page when `dy` is positive: lines from a plain wheel, or points from a trackpad
 /// or a Magic Mouse (with a `phase`) or a wheel its driver smooths, which macOS counts as `lines` (one, by default, as
-/// for a slow notch). It comes `gap` seconds after the one before, with ⌘ held unless `flags` says otherwise. An event
-/// made outside a window reads its screen location as its location in the window.
+/// for a slow notch), with ⌘ held unless `flags` says otherwise. An event made outside a window reads its screen location
+/// as its location in the window.
 @MainActor
-func scrollEvent(_ dy: Double, precise: Bool = false, lines: Int64 = 1, phase: Int64 = 0, momentum: Int64 = 0, gap: TimeInterval = 1,
+func scrollEvent(_ dy: Double, precise: Bool = false, lines: Int64 = 1, phase: Int64 = 0, momentum: Int64 = 0,
                  at point: CGPoint = .zero, in view: NSView? = nil, flags: CGEventFlags = .maskCommand) throws -> NSEvent {
     let notch = Int32(dy.rounded(.awayFromZero))
     let event = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: precise ? .pixel : .line, wheelCount: 1,
@@ -259,8 +254,6 @@ func scrollEvent(_ dy: Double, precise: Bool = false, lines: Int64 = 1, phase: I
     event.setDoubleValueField(precise ? .scrollWheelEventPointDeltaAxis1 : .scrollWheelEventFixedPtDeltaAxis1, value: dy)
     event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
     event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
-    scrollClock += gap
-    event.timestamp = UInt64(scrollClock * 1_000_000_000)
     let inWindow = view.map { $0.convert(point, to: nil) } ?? point
     event.location = CGPoint(x: inWindow.x, y: (NSScreen.screens.first?.frame.height ?? 0) - inWindow.y)
     event.flags = flags
