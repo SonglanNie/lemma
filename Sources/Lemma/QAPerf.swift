@@ -73,6 +73,80 @@ enum QAPerf {
     }
 }
 
+extension QAPerf {
+    /// Turns a mouse wheel with ⌘ held over the main PDF view (its middle, or `x`, `y`), as a free-spinning wheel sends
+    /// it: `events` scroll events `gap` ms apart, each of `lines` lines and `points` points, zooming in (`direction=out`
+    /// zooms out). Writes the main thread's busy time between events (each, mean, p95, max, events over the gap), the time of the
+    /// scroll call itself, the zoom after each event, how far the point under the pointer moved, the scale notifications
+    /// PDFKit posted and the body evaluations.
+    static func zoomBench(store: StudyStore, info: [String: String], output: URL) async throws {
+        guard let view = store.reader.view, view.window != nil else { throw QAHooks.QAError.missing("open book") }
+        let events = Int(info["events"] ?? "") ?? 60, lines = Int64(info["lines"] ?? "") ?? 40
+        let gap = Double(info["gap"] ?? "") ?? 15, points = Double(info["points"] ?? "") ?? 400
+        let sign: Double = info["direction"] == "out" ? -1 : 1
+        // x= and y= (0.5): where the pointer is, as fractions of the view's width and height from its top left.
+        let x = Double(info["x"] ?? "") ?? 0.5, y = Double(info["y"] ?? "") ?? 0.5
+        let inWindow = view.convert(CGPoint(x: view.bounds.minX + view.bounds.width * x,
+                                            y: view.isFlipped ? view.bounds.minY + view.bounds.height * y : view.bounds.maxY - view.bounds.height * y), to: nil)
+        // The point of the page under the pointer, which should stay there (until the document's edge stops it).
+        let pointer = view.convert(inWindow, from: nil), page = view.page(for: pointer, nearest: true)
+        let anchor = page.map { view.convert(pointer, to: $0) }
+        // An event made here has no window, so its location in the window is its location on the screen: it is given the
+        // pointer's window coordinates, as the screen numbers them from the top.
+        let location = CGPoint(x: inWindow.x, y: (NSScreen.screens.first?.frame.height ?? 0) - inWindow.y)
+        final class Box { var notes = 0 }
+        let box = Box()
+        let observer = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { _ in box.notes += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let meter = BusyMeter()
+        var busy: [Double] = [], calls: [Double] = [], scales: [Double] = [Double(view.scaleFactor)], drift: [Double] = []
+        counts = [:]; counting = true
+        meter.start()
+        let started = CACurrentMediaTime()
+        for _ in 0..<events {
+            guard let event = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: Int32(sign * points), wheel2: 0, wheel3: 0) else { continue }
+            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+            event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: Int64(sign) * lines)
+            event.setDoubleValueField(.scrollWheelEventPointDeltaAxis1, value: sign * points)
+            event.timestamp = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+            event.location = location
+            event.flags = .maskCommand
+            guard let scroll = NSEvent(cgEvent: event) else { continue }
+            let before = CACurrentMediaTime()
+            view.scrollWheel(with: scroll)
+            calls.append((CACurrentMediaTime() - before) * 1000)
+            try await Task.sleep(for: .milliseconds(gap))
+            busy.append(meter.take() * 1000)
+            scales.append(Double(view.scaleFactor))
+            if let anchor, let page {
+                let held = view.convert(anchor, from: page)
+                drift.append(Double(hypot(held.x - pointer.x, held.y - pointer.y)))
+            }
+        }
+        let wall = CACurrentMediaTime() - started
+        try await Task.sleep(for: .milliseconds(400))
+        let settle = meter.take() * 1000
+        meter.stop()
+        counting = false
+        scales.append(Double(view.scaleFactor))
+        func rounded(_ value: Double) -> Double { (value * 1000).rounded() / 1000 }
+        func percentile(_ values: [Double], _ p: Double) -> Double {
+            let sorted = values.sorted()
+            return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int((Double(sorted.count - 1) * p).rounded()))]
+        }
+        let result: [String: Any] = [
+            "events": events, "gapMs": gap, "lines": lines, "wallSeconds": rounded(wall),
+            "busyMs": ["mean": rounded(busy.reduce(0, +) / Double(max(busy.count, 1))), "p95": rounded(percentile(busy, 0.95)),
+                       "max": rounded(busy.max() ?? 0)],
+            "eventsOverGap": busy.filter { $0 > gap }.count,
+            "scrollCallMs": ["mean": rounded(calls.reduce(0, +) / Double(max(calls.count, 1))), "p95": rounded(percentile(calls, 0.95))],
+            "settleBusyMs": rounded(settle), "scaleNotifications": box.notes, "maxDriftPoints": rounded(drift.max() ?? 0),
+            "busy": busy.map { ($0 * 10).rounded() / 10 }, "scales": scales.map(rounded), "bodies": counts
+        ]
+        try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys]).write(to: output)
+    }
+}
+
 /// One benchmark pass: a timer that moves the clip view a step per tick and reads the busy time of the frame before.
 @MainActor
 private final class ScrollBenchRun {
