@@ -94,7 +94,7 @@ final class FloatingBoxTests: XCTestCase {
         view.onZoom = { saved = $0 }
         let middle = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
         for _ in 0..<5 { view.scrollWheel(with: try scrollEvent(1, at: middle, in: view)) }
-        XCTAssertEqual(view.zoom, pow(1.06, 5), accuracy: 0.01, "⌘-scroll zooms into the box.")
+        XCTAssertEqual(view.zoom, pow(ScrollZoom.step, 5), accuracy: 0.01, "⌘-scroll zooms into the box.")
         XCTAssertNil(saved, "The box keeps its zoom once the wheel stops.")
         ScrollZoom.end()
         XCTAssertEqual(saved ?? 0, Double(view.zoom), accuracy: 0.001, "The zoom is kept with the box.")

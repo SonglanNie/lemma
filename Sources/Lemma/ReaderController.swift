@@ -1546,29 +1546,34 @@ extension PDFView {
         scaleFactor = scale
         // PDFKit zooms around the middle of the view: the point under the pointer when the turn began is put back under
         // it, exactly. The clip view's constraint keeps the pages within their edges (and centres pages narrower than the
-        // view), but it also rounds to half a point of the page, which at 5000% is 25 points on the screen: the letters
-        // around the pointer shook at every step. Within that rounding the exact origin is kept.
+        // view), but it also rounds to the nearest pixel of the screen counted in points of the page, half a point on a
+        // Retina screen and a whole one on another, which at 5000% is 25 or 50 points on the screen: the letters around
+        // the pointer shook at every step. Within a pixel the exact origin is kept.
         let clip = scrollView.contentView
         let moved = clip.convert(convert(anchor.point, from: anchor.page), from: self), held = clip.convert(location, from: self)
         let origin = CGPoint(x: clip.bounds.minX + moved.x - held.x, y: clip.bounds.minY + moved.y - held.y)
         let constrained = clip.constrainBoundsRect(CGRect(origin: origin, size: clip.bounds.size)).origin
-        clip.scroll(to: CGPoint(x: abs(constrained.x - origin.x) > 0.5 ? constrained.x : origin.x,
-                                y: abs(constrained.y - origin.y) > 0.5 ? constrained.y : origin.y))
+        let pixel = 1 / (window?.backingScaleFactor ?? 1)
+        clip.scroll(to: CGPoint(x: abs(constrained.x - origin.x) > pixel ? constrained.x : origin.x,
+                                y: abs(constrained.y - origin.y) > pixel ? constrained.y : origin.y))
         scrollView.reflectScrolledClipView(clip)
     }
 }
 
-/// How far a ⌘-scroll zooms: 6% a notch of the wheel, and as fast as a free-spinning wheel turns up to 2¹⁵ a second
-/// (a quarter of a doubling every 60th of a second, as fast as PDFgear zooms with the wheel): from 10% to 10000% in
-/// two thirds of a second. While the wheel turns, the marks over the pages are laid out at every step, and the rest of
-/// Lemma (the status bar, the panels, the saved place) takes in the new zoom once it has stopped for 0.2 s (`didEnd`):
-/// done at every step, that work took most of the time between two events of a fast turn.
+/// How far a ⌘-scroll zooms: a quarter of a doubling (19%) for each event of a wheel, however far or fast it turns, as
+/// PDFgear's wheel does, which calls PDFKit's `zoomIn:` once an event. macOS counts more lines in an event the faster the
+/// wheel turns (one for a slow notch, up to 132 recorded from the free-spinning wheel of an MX Master), and the distance
+/// a notch covers depends on the mouse and its software, so neither says how far to zoom: a step an event zooms as much
+/// for a slow notch as for a fast one, and the free spin, which sends 60 events a second, goes from 10% to 10000% in two
+/// thirds of a second. While the wheel turns, the marks over the pages are laid out at every step, and the rest of Lemma
+/// (the status bar, the panels, the saved place) takes in the new zoom once it has stopped for 0.2 s (`didEnd`): done at
+/// every step, that work took most of the time between two events of a fast turn.
 @MainActor
 enum ScrollZoom {
     /// Posted with the PDF view as the object when a turn of the wheel that zoomed it has stopped.
     static let didEnd = Notification.Name("LemmaScrollZoomDidEnd")
-    /// When the last ⌘-scroll arrived, which sets how far a fast turn may zoom.
-    private static var lastEvent: TimeInterval = 0
+    /// How far an event of a wheel zooms, as PDFKit's `zoomIn:`.
+    static let step = pow(2, 0.25) as CGFloat
     /// The PDF view zooming while the wheel turns, and the timer that ends its turn.
     private static weak var zooming: PDFView?
     private static var ending: Timer?
@@ -1578,21 +1583,12 @@ enum ScrollZoom {
     static func isZooming(_ view: PDFView?) -> Bool { view != nil && zooming === view }
 
     static func factor(for event: NSEvent) -> CGFloat {
-        let elapsed = event.timestamp - lastEvent
-        lastEvent = event.timestamp
         guard event.momentumPhase == [], event.scrollingDeltaY != 0 else { return 1 }
         // Scrolling up the page zooms in, as in PDFgear: rolling the wheel away without natural scrolling, toward you
         // with it.
         let up = event.scrollingDeltaY
-        // A wheel counts the lines macOS gives the event: one for a slow notch, whatever distance the mouse and its
-        // software give a notch (a tenth of a line to a line for a plain wheel; 13 points for an MX Master 3S, 71 through
-        // LinearMouse), and more for a fast turn, including the events macOS merged while Lemma was drawing. A trackpad or
-        // a Magic Mouse sends a swipe frame by frame, in phases, and counts 35 points a notch.
-        let lines = CGFloat(abs(event.cgEvent?.getIntegerValueField(.scrollWheelEventDeltaAxis1) ?? 0))
-        let notches = event.phase == [] ? (up > 0 ? 1 : -1) * max(1, lines) : up / 35
-        // The first event of a flick after a pause, which may carry a dozen lines, zooms at most 1.7×.
-        let limit = pow(2, 15 * min(max(elapsed, 1.0 / 120), 0.05))
-        return min(limit, max(1 / limit, pow(1.06, notches)))
+        // A trackpad or a Magic Mouse sends a swipe frame by frame, in phases, and zooms a step for 35 points of it.
+        return pow(step, event.phase == [] ? (up > 0 ? 1 : -1) : up / 35)
     }
 
     /// Starts or continues the turn of the wheel zooming `view`, which ends once no ⌘-scroll has come for 0.2 s, and
