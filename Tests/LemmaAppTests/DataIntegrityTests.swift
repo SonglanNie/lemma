@@ -23,9 +23,10 @@ final class DataIntegrityTests: XCTestCase {
 
     /// A PDF of `pages` pages whose text names `label`, so different labels give different bytes.
     @MainActor @discardableResult
-    private func pdf(_ name: String, pages: Int = 3, label: String? = nil, password: String? = nil) throws -> URL {
+    private func pdf(_ name: String, pages: Int = 3, label: String? = nil, title: String? = nil, password: String? = nil) throws -> URL {
         let url = root.appendingPathComponent(name)
         let document = PDFDocument()
+        if let title { document.documentAttributes = [PDFDocumentAttribute.titleAttribute: title] }
         for index in 0..<pages {
             let image = NSImage(size: NSSize(width: 300, height: 400), flipped: false) { rect in
                 NSColor.white.setFill(); rect.fill()
@@ -140,20 +141,79 @@ final class DataIntegrityTests: XCTestCase {
     }
 
     @MainActor
-    func testTheSamePDFFromAnotherPathSharesItsDocumentAndKeepsReferenceLinks() throws {
+    func testACopyOfAPDFIsABookOfItsOwn() throws {
+        let original = try pdf("Book.pdf", title: "Linear Algebra Done Right")
+        let copy = root.appendingPathComponent("Book signed.pdf")
+        try FileManager.default.copyItem(at: original, to: copy)
+        let store = store()
+        store.open(original)
+        let originalID = try XCTUnwrap(store.workspace?.id)
+        let document = try XCTUnwrap(store.document)
+        let noteID = try addNote(store)
+        store.addInk(InkStroke(pageIndex: 0, points: [InkPoint(x: 10, y: 10), InkPoint(x: 40, y: 40)]), undoManager: nil)
+
+        // The same bytes under another name: a signed copy, a filled-in form.
+        store.open(copy)
+        let copyID = try XCTUnwrap(store.workspace?.id)
+        XCTAssertNotEqual(copyID, originalID, "Each file is its own book.")
+        XCTAssertEqual(store.tabs.map(\.id), [originalID, copyID])
+        XCTAssertEqual(store.workspace?.fingerprint, try WorkspaceRepository.fingerprint(of: original))
+        XCTAssertEqual(store.workspace?.sourcePath, copy.path)
+        XCTAssertEqual(store.workspace?.title, "Book signed", "The copy is named by its file, not by the PDF title both share.")
+        XCTAssertEqual(store.workspace?.notes, [])
+        XCTAssertEqual(store.workspace?.inkStrokes, [], "Ink on one copy stays off the other.")
+        XCTAssertFalse(store.document === document)
+        XCTAssertTrue(store.references?.document === store.document, "The reference index reads the document shown.")
+
+        store.activateTab(originalID)
+        XCTAssertEqual(store.workspace?.sourcePath, original.path, "The original keeps its file.")
+        XCTAssertEqual(store.workspace?.title, "Linear Algebra Done Right")
+        XCTAssertEqual(store.workspace?.notes.map(\.id), [noteID])
+        XCTAssertTrue(store.document === document)
+        store.flush()
+
+        // After a restart each file finds its own book again.
+        let restarted = self.store()
+        restarted.open(copy)
+        XCTAssertEqual(restarted.workspace?.id, copyID)
+        restarted.open(original)
+        XCTAssertEqual(restarted.workspace?.id, originalID)
+        XCTAssertEqual(restarted.workspace?.notes.map(\.id), [noteID])
+        XCTAssertEqual(restarted.library.count, 2)
+        XCTAssertNil(restarted.error)
+    }
+
+    @MainActor
+    func testAMovedPDFKeepsItsBookAndAnEditedCopyKeepsItsOwn() throws {
         let original = try pdf("Book.pdf")
         let copy = root.appendingPathComponent("Copy of Book.pdf")
         try FileManager.default.copyItem(at: original, to: copy)
         let store = store()
         store.open(original)
-        let document = try XCTUnwrap(store.document)
+        let originalID = try XCTUnwrap(store.workspace?.id)
+        let noteID = try addNote(store)
         store.open(copy)
-        XCTAssertTrue(store.document === document, "The same bytes are one document.")
-        XCTAssertTrue(store.references?.document === store.document, "The reference index reads the document shown.")
+        let copyID = try XCTUnwrap(store.workspace?.id)
         store.closeBook()
+        store.closeBook()
+        store.flush()
+
+        // Moved while Lemma was not watching: the file is gone from its path, and the book follows its bytes.
+        let moved = root.appendingPathComponent("Moved/Book.pdf")
+        try FileManager.default.createDirectory(at: moved.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: original, to: moved)
+        store.open(moved)
+        XCTAssertEqual(store.workspace?.id, originalID)
+        XCTAssertEqual(store.workspace?.notes.map(\.id), [noteID])
+        XCTAssertEqual(store.workspace?.sourcePath, moved.path)
+
+        // Signed in another app: the copy's bytes change, and its book follows its path.
+        try pdf("Copy of Book.pdf", label: "Signed")
         store.open(copy)
-        XCTAssertTrue(store.references?.document === store.document)
-        XCTAssertEqual(store.workspace?.sourcePath, copy.path)
+        XCTAssertEqual(store.workspace?.id, copyID)
+        XCTAssertEqual(store.workspace?.fingerprint, try WorkspaceRepository.fingerprint(of: copy))
+        XCTAssertEqual(store.library.count, 2)
+        XCTAssertNil(store.error)
     }
 
     // MARK: Unreadable workspaces

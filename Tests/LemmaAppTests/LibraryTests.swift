@@ -164,7 +164,7 @@ final class NeighborsRecordTests: XCTestCase {
 
 final class SourceLocationTests: XCTestCase {
     @MainActor
-    func testReopeningFollowsTheMostRecentlyOpenedCopy() throws {
+    func testEachCopyReopensItsOwnFile() throws {
         _ = NSApplication.shared
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -179,8 +179,13 @@ final class SourceLocationTests: XCTestCase {
         store.open(first)
         store.open(second)
         let reopened = StudyStore(app: AppModel(root: root.appendingPathComponent("support")))
-        reopened.reopen(try XCTUnwrap(reopened.library.first))
-        let opened = URL(fileURLWithPath: try XCTUnwrap(reopened.workspace?.sourcePath)).resolvingSymlinksInPath().path
-        XCTAssertEqual(opened, second.resolvingSymlinksInPath().path, "Both copies exist; the one opened last wins.")
+        XCTAssertEqual(reopened.library.count, 2, "Both copies exist: each is a book of its own.")
+        for copy in [first, second] {
+            let path = copy.resolvingSymlinksInPath().path
+            let book = try XCTUnwrap(reopened.library.first { URL(fileURLWithPath: $0.sourcePath).resolvingSymlinksInPath().path == path })
+            reopened.reopen(book)
+            XCTAssertEqual(reopened.workspace?.id, book.id)
+            XCTAssertEqual(URL(fileURLWithPath: try XCTUnwrap(reopened.workspace?.sourcePath)).resolvingSymlinksInPath().path, path)
+        }
     }
 }
