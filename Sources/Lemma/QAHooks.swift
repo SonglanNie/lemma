@@ -16,8 +16,9 @@ final class QAHooks: NSObject {
     let directory: URL
     weak var store: StudyStore?
 
-    /// The shipping app (bundle `com.lemma.app`) never listens, whatever its environment: only re-identified QA copies
-    /// (`com.lemma.app.qa…`) and unbundled development runs do, so no other process can drive a user's Lemma.
+    /// Lemma and Lemma Dev (`com.lemma.app`, `com.lemma.app.dev`) never listen, whatever their environment: only
+    /// re-identified QA copies (`com.lemma.app.qa…`) and unbundled development runs do, so no other process can drive a
+    /// user's Lemma.
     static var isAllowed: Bool {
         guard let id = Bundle.main.bundleIdentifier else { return true }
         return id.hasPrefix("com.lemma.app.qa") || !id.hasPrefix("com.lemma.app")

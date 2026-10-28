@@ -23,7 +23,7 @@ jobs:
       - name: Toolchain
         run: swift --version && sw_vers
       - name: Build
-        run: scripts/build-app.sh --universal
+        run: scripts/build-app.sh --release --universal
       - name: Disk image
         run: scripts/make-dmg.sh
       - name: Publish

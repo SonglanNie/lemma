@@ -1,6 +1,9 @@
 #!/bin/zsh
-# build-app.sh [--universal]: builds build/Lemma.app (optimized: simulations and page analysis run far faster than in
-# debug builds).
+# build-app.sh [--release] [--universal]: builds build/Lemma Dev.app (optimized: simulations and page analysis run far
+# faster than in debug builds).
+#   --release                 builds build/Lemma.app instead, the app releases ship (com.lemma.app). A local build is
+#                             Lemma Dev (com.lemma.app.dev), with a library of its own: with one identity for both, macOS
+#                             opened whichever copy it had registered, and an old local build stood in for the installed app.
 #   --universal               Apple silicon and Intel in one binary (what public releases ship).
 #   LEMMA_SIGN_IDENTITY=…     a "Developer ID Application: …" identity: hardened runtime and a secure timestamp, ready
 #                             for notarization (scripts/notarize.sh). Another name is a self-signed certificate trusted
@@ -8,9 +11,11 @@
 #                             ad hoc, which runs on this Mac and, after "Open Anyway", on others.
 set -eu
 cd "${0:A:h:h}"
+release=0
 universal=0
 for argument in "$@"; do
   case $argument in
+    --release) release=1 ;;
     --universal) universal=1 ;;
     *) echo "unknown option $argument"; exit 2 ;;
   esac
@@ -21,7 +26,13 @@ arch_flags=()
 (( universal )) && arch_flags=(--arch arm64 --arch x86_64)
 swift build -c release $arch_flags
 bin_dir="$(swift build -c release $arch_flags --show-bin-path)"
-bundle_path="$PWD/build/Lemma.app"
+if (( release )); then
+  bundle_path="$PWD/build/Lemma.app"
+  package_flags=(--release)
+else
+  bundle_path="$PWD/build/Lemma Dev.app"
+  package_flags=()
+fi
 # LemmaIndexer runs from a background-only bundle of its own (its Info.plist comes from package-app.py): PDFKit
 # registers the helper with the window server, and from Contents/MacOS it registered as Lemma, so the Dock showed
 # another Lemma for each book the helper read.
@@ -42,7 +53,7 @@ ditto "$bin_dir/Sparkle.framework" "$framework"
 rm -rf "$framework/Versions/B/XPCServices" "$framework/XPCServices"
 swift scripts/generate-icon.swift build/Lemma.iconset
 iconutil -c icns build/Lemma.iconset -o "$bundle_path/Contents/Resources/Lemma.icns"
-python3 scripts/package-app.py "$bundle_path"
+python3 scripts/package-app.py "$bundle_path" $package_flags
 identity=${LEMMA_SIGN_IDENTITY:--}
 if [[ $identity == "Developer ID Application:"* ]]; then
   # Inside out, without --deep: Sparkle's helpers and framework, each helper, then the app, all with the hardened runtime

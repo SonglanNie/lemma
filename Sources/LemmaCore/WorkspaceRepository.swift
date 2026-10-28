@@ -32,9 +32,13 @@ public struct WorkspaceRepository: Sendable {
     public let root: URL
     public init(root: URL) { self.root = root }
 
+    /// `~/Library/Application Support/<folder>`, the folder the app's Info.plist names under `LemmaSupportFolder`: Lemma for a
+    /// release, Lemma Dev for a local build (scripts/package-app.py). Runs outside an app bundle (`swift run`) are development
+    /// runs and use Lemma Dev too, so only a release reads and writes the reader's library.
     public static var defaultRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Lemma", isDirectory: true)
+        let folder = Bundle.main.object(forInfoDictionaryKey: "LemmaSupportFolder") as? String ?? "Lemma Dev"
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(folder, isDirectory: true)
     }
 
     /// The SHA-256 of the file's bytes, which names its workspace. Reads the whole file: see `SourceFingerprint` for

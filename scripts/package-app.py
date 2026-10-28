@@ -1,4 +1,7 @@
-"""Package locally built native executables; no signing identity or publication."""
+"""package-app.py <bundle> [--release]: package locally built native executables; no signing identity or publication.
+
+Without --release the bundle is Lemma Dev (com.lemma.app.dev), with a support folder of its own: macOS never mistakes a
+local build for the installed Lemma, and the two can run side by side without writing the same library."""
 import json
 import plistlib
 import shutil
@@ -7,6 +10,12 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
 bundle = Path(sys.argv[1])
+options = sys.argv[2:]
+if options not in ([], ["--release"]):
+    raise SystemExit(f"unknown options {options}")
+release = options == ["--release"]
+app_name = "Lemma" if release else "Lemma Dev"
+identifier = "com.lemma.app" if release else "com.lemma.app.dev"
 companion = bundle / "Contents/Resources/Chrome Companion"
 identity = json.loads((root / "browser/identity.json").read_text())
 manifest = json.loads((root / "browser/manifest.json").read_text())
@@ -23,15 +32,15 @@ for folder in ("Themes", "Codicons", "Assistant", "Sample", "Licenses"):
     shutil.copytree(root / "Sources/Lemma/Resources" / folder, bundle / "Contents/Resources" / folder, dirs_exist_ok=True)
 shutil.copy2(root / "LICENSE", bundle / "Contents/Resources/LICENSE.txt")
 info = {
-    "CFBundleName": "Lemma", "CFBundleDisplayName": "Lemma",
-    "CFBundleIdentifier": "com.lemma.app", "CFBundleExecutable": "Lemma",
+    "CFBundleName": app_name, "CFBundleDisplayName": app_name,
+    "CFBundleIdentifier": identifier, "CFBundleExecutable": "Lemma",
+    # The folder in Application Support that holds the library (WorkspaceRepository.defaultRoot).
+    "LemmaSupportFolder": app_name,
     "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.4.0-fork.1",
     "CFBundleVersion": "51", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
     "CFBundleIconFile": "Lemma.icns",
-    # lemma://open?book=<fingerprint>&ref=Theorem%202.3 (or &page=<pdf page>) opens a place in a book from other apps.
-    "CFBundleURLTypes": [{"CFBundleURLName": "com.lemma.app.link", "CFBundleURLSchemes": ["lemma"]}],
     # 3.0: Lemma is offered in Finder's Open With menu for PDFs and accepts PDFs dropped on its Dock icon.
     "CFBundleDocumentTypes": [{"CFBundleTypeName": "PDF Document", "CFBundleTypeRole": "Viewer", "LSHandlerRank": "Alternate",
                                "LSItemContentTypes": ["com.adobe.pdf"]}],
@@ -48,12 +57,16 @@ info = {
         "web4.cs.ucl.ac.uk": {"NSExceptionAllowsInsecureHTTPLoads": True, "NSIncludesSubdomains": False},
     }},
 }
+# lemma://open?book=<fingerprint>&ref=Theorem%202.3 (or &page=<pdf page>) opens a place in a book from other apps. Only a
+# release claims the scheme, so links always open the reader's library.
+if release:
+    info["CFBundleURLTypes"] = [{"CFBundleURLName": "com.lemma.app.link", "CFBundleURLSchemes": ["lemma"]}]
 with (bundle / "Contents/Info.plist").open("wb") as file:
     plistlib.dump(info, file)
 # 3.2.2: the helper that reads books has a bundle of its own (scripts/build-app.sh), background-only, so the Dock never
 # shows it. In Contents/MacOS it took Lemma's identity and showed up as another Lemma.
 helper = {
-    "CFBundleName": "LemmaIndexer", "CFBundleIdentifier": "com.lemma.app.indexer", "CFBundleExecutable": "LemmaIndexer",
+    "CFBundleName": "LemmaIndexer", "CFBundleIdentifier": f"{identifier}.indexer", "CFBundleExecutable": "LemmaIndexer",
     "CFBundlePackageType": "APPL", "CFBundleShortVersionString": info["CFBundleShortVersionString"],
     "CFBundleVersion": info["CFBundleVersion"], "LSMinimumSystemVersion": info["LSMinimumSystemVersion"],
     "LSBackgroundOnly": True,
