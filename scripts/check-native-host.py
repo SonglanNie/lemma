@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-host = root / "build/Lemma.app/Contents/MacOS/LemmaBrowserHost"
+host = root / "build/Lemma Dev.app/Contents/MacOS/LemmaBrowserHost"
 with tempfile.TemporaryDirectory(prefix="lemma-host-check-") as temporary:
     support = Path(temporary)
     request_id = str(uuid.uuid4()).upper()

@@ -9,11 +9,13 @@ Requirements: macOS 15 or later and Xcode 16 or later (its command-line tools ar
 ```sh
 git clone https://github.com/SonglanNie/lemma.git
 cd lemma
-scripts/build-app.sh          # optimized build: build/Lemma.app
-open build/Lemma.app
+scripts/build-app.sh          # optimized build: build/Lemma Dev.app
+open "build/Lemma Dev.app"
 ```
 
-`scripts/build-app.sh --universal` builds for Apple silicon and Intel. During development, `swift build` and `swift run Lemma` work too; resources are then read from SwiftPM's bundle beside the executable.
+A local build is *Lemma Dev* (bundle identifier `com.lemma.app.dev`), with its own library in `~/Library/Application Support/Lemma Dev` and its own preferences. It runs beside an installed Lemma without touching your library, and macOS never opens it in Lemma's place, which it did while both had one identity. Lemma Dev does not handle `lemma://` links. To try a change on your own books, copy `~/Library/Application Support/Lemma` to `Lemma Dev` with both apps closed.
+
+`scripts/build-app.sh --release` builds `build/Lemma.app`, the app releases ship (`com.lemma.app`), and `--universal` builds for Apple silicon and Intel. During development, `swift build` and `swift run Lemma` work too; resources are then read from SwiftPM's bundle beside the executable, and the library is Lemma Dev's.
 
 ## Tests
 
@@ -44,7 +46,7 @@ Tests never touch your real data: the app's tests use temporary folders through 
 
 ## Driving the app in tests and reviews
 
-A development copy launched with `LEMMA_QA_DIR=<folder>` answers `com.lemma.qa` distributed notifications (see `Sources/Lemma/QAHooks.swift`): it takes snapshots of its own windows, writes state as JSON and runs named actions. Release builds with the bundle identifier `com.lemma.app` never listen. Use a separate bundle identifier starting with `com.lemma.app.qa` and `LEMMA_SUPPORT_DIR` for such copies.
+A development copy launched with `LEMMA_QA_DIR=<folder>` answers `com.lemma.qa` distributed notifications (see `Sources/Lemma/QAHooks.swift`): it takes snapshots of its own windows, writes state as JSON and runs named actions. Lemma and Lemma Dev (bundle identifiers `com.lemma.app` and `com.lemma.app.dev`) never listen. Use a separate bundle identifier starting with `com.lemma.app.qa` and `LEMMA_SUPPORT_DIR` for such copies.
 
 ## Reporting problems
 

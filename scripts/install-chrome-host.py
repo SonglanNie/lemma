@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-app = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) > 1 else root / "build/Lemma.app"
+app = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) > 1 else root / "build/Lemma Dev.app"
 host = app / "Contents/MacOS/LemmaBrowserHost"
 companion = app / "Contents/Resources/Chrome Companion"
 if not host.is_file() or not os.access(host, os.X_OK):
