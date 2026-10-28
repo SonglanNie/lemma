@@ -10,13 +10,13 @@ Lemma's Chrome companion transfers a reviewed study question into the visible Ch
 
 ## Setup
 
-Build with `scripts/build-app.sh`, open `build/Lemma.app`, and use **Assistants › Connections › Chrome Companion → Prepare Connection**. This registers the packaged `LemmaBrowserHost` executable in:
+Build with `scripts/build-app.sh`, open `build/Lemma Dev.app` (or an installed Lemma), and use **Assistants › Connections › Chrome Companion → Prepare Connection**. This registers the packaged `LemmaBrowserHost` executable in:
 
 ```text
 ~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.lemma.browser.json
 ```
 
-Alternatively run `python3 scripts/install-chrome-host.py build/Lemma.app` from the repository. The registration accepts only the companion's fixed extension ID, `jkdnfdclkogopbhlihppdodgkfkhfpkc`.
+Alternatively run `python3 scripts/install-chrome-host.py "build/Lemma Dev.app"` from the repository. Chrome has one registration, so the app that prepared the connection last, Lemma or Lemma Dev, receives the companion's questions. The registration accepts only the companion's fixed extension ID, `jkdnfdclkogopbhlihppdodgkfkhfpkc`.
 
 In `chrome://extensions`, enable Developer mode and load `build/Chrome Companion` with **Load unpacked**. This is an ordinary directory next to the app, because Chrome's folder picker does not expose app bundle contents as ordinary folders. Sign in to ChatGPT yourself. No credentials are copied into Lemma.
 

@@ -76,7 +76,7 @@ Lemma has no account, no analytics and no tracking. Your books, notes and readin
 
 ```sh
 git clone https://github.com/SonglanNie/lemma.git && cd lemma
-scripts/build-app.sh && open build/Lemma.app
+scripts/build-app.sh --release && open build/Lemma.app
 ```
 
 You need macOS 15 and Xcode 16 or later. [CONTRIBUTING.md](CONTRIBUTING.md) explains the layout of the code, the tests and how to contribute.
