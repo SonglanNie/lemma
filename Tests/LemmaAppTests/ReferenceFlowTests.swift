@@ -257,6 +257,37 @@ final class ReferenceFlowTests: XCTestCase {
         XCTAssertTrue(view.keptReferencePeeks.isEmpty)
     }
 
+    /// Dragged away from its mention, a Classic peek is a popover's window of its own, which the window server moves
+    /// only where its views let it: its title bar then moves it on every drag, not only the one that detached it.
+    @MainActor
+    func testDetachedClassicPopoverMovesByItsTitleBar() async throws {
+        _ = NSApplication.shared
+        let previous = ThemeManager.shared.style
+        ThemeManager.shared.style = .classic
+        defer { ThemeManager.shared.style = previous }
+        let fixture = try Fixture(hosted: true)
+        defer { fixture.close() }
+        let store = fixture.store
+        try await Task.sleep(for: .milliseconds(150))
+        let index = try XCTUnwrap(store.references)
+        store.reader.goToPage(3); store.reader.updatePage()
+        let mention = try XCTUnwrap(index.mentions(onPage: 2).first { !$0.isDefinition })
+        let view = try XCTUnwrap(store.reader.view)
+        store.peekReference(mention, pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        let peek = try XCTUnwrap(view.referencePopover)
+        func dragAreas() -> [WindowDragAreaView] {
+            func areas(in view: NSView) -> [WindowDragAreaView] { ((view as? WindowDragAreaView).map { [$0] } ?? []) + view.subviews.flatMap(areas) }
+            return peek.popover.contentViewController?.view.window?.contentView?.superview.map(areas) ?? []
+        }
+        XCTAssertTrue(dragAreas().isEmpty, "At its mention, a drag of the title bar is AppKit's, which detaches the popover.")
+        peek.popoverDidDetach(peek.popover)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(peek.isKept)
+        XCTAssertEqual(dragAreas().count, 1, "Detached, its title bar moves it.")
+        view.closeKeptReferencePeeks()
+    }
+
     @MainActor
     func testClassicStyleKeepsTheReferencePopover() async throws {
         _ = NSApplication.shared
