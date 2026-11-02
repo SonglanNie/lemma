@@ -35,6 +35,8 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// resizes it.
     var autoPlace: (() -> Void)?
     private var monitors: [Any] = []
+    /// Moves the detached popover's window from its empty places (`popoverDidDetach`).
+    private var moveMonitor: Any?
 
     var isShown: Bool { popover.isShown || panel.isShown }
     func close() {
@@ -153,10 +155,32 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// Dragged away from its mention, the peek becomes a window of its own that stays open while the reader works on.
     func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
 
-    func popoverDidDetach(_ popover: NSPopover) { keep(); placeEdges() }
+    /// At its mention, a drag from any of the popover's empty places detaches it, which AppKit does. Detached, the drag
+    /// would move it from none of them: AppKit lets the window move by its background, but the SwiftUI view that fills
+    /// it takes the press. The peek moves it from those places itself, so that a drag that took it away moves it on.
+    func popoverDidDetach(_ popover: NSPopover) {
+        keep(); placeEdges()
+        guard moveMonitor == nil, let window = popover.contentViewController?.view.window else { return }
+        moveMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self, weak window] event in
+            guard let self, let window, event.window === window, self.movesWindow(at: event.locationInWindow) else { return event }
+            window.performDrag(with: event)
+            // The press goes on, so that a peek still at its mention closes, as on any click outside it.
+            return event
+        }
+    }
+
+    /// Whether a press at `point`, in the popover's window, moves the detached popover: anywhere but on the preview, a
+    /// button or an edge it is resized by. Those are AppKit views inside the peek's SwiftUI view; its text, padding and the
+    /// space between its buttons are the SwiftUI view itself, and the popover's border is AppKit's frame around it.
+    func movesWindow(at point: NSPoint) -> Bool {
+        guard let content = popover.contentViewController?.view,
+              let hit = content.window?.contentView?.superview?.hitTest(point) else { return false }
+        return hit === content || !hit.isDescendant(of: content)
+    }
 
     func popoverDidClose(_ notification: Notification) {
         removeMonitors()
+        if let moveMonitor { NSEvent.removeMonitor(moveMonitor); self.moveMonitor = nil }
         if store?.referencePeek?.id == requestID { store?.referencePeek = nil }
         onClosed?()
     }

@@ -257,6 +257,48 @@ final class ReferenceFlowTests: XCTestCase {
         XCTAssertTrue(view.keptReferencePeeks.isEmpty)
     }
 
+    /// Dragged away from its mention, a Classic peek is a popover's window of its own. A drag from any of its empty
+    /// places moves it on, as a drag from them took it away: its padding, title and the space between its buttons, but
+    /// not its preview, a button or the edge it is resized by.
+    @MainActor
+    func testDetachedClassicPopoverMovesFromItsEmptyPlaces() async throws {
+        _ = NSApplication.shared
+        let previous = ThemeManager.shared.style
+        ThemeManager.shared.style = .classic
+        defer { ThemeManager.shared.style = previous }
+        let fixture = try Fixture(hosted: true)
+        defer { fixture.close() }
+        let store = fixture.store
+        try await Task.sleep(for: .milliseconds(150))
+        let index = try XCTUnwrap(store.references)
+        store.reader.goToPage(3); store.reader.updatePage()
+        let mention = try XCTUnwrap(index.mentions(onPage: 2).first { !$0.isDefinition })
+        let view = try XCTUnwrap(store.reader.view)
+        store.peekReference(mention, pageIndex: 2)
+        let peek = try XCTUnwrap(view.referencePopover)
+        let content = try XCTUnwrap(peek.popover.contentViewController?.view)
+        func descendants<T: NSView>(_ type: T.Type, in view: NSView) -> [T] {
+            ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants(type, in: $0) }
+        }
+        for _ in 0..<40 where descendants(PeekPDFView.self, in: content).isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        content.layoutSubtreeIfNeeded()
+        let preview = try XCTUnwrap(descendants(PeekPDFView.self, in: content).first)
+        let close = try XCTUnwrap(descendants(NSButton.self, in: content).first { !$0.frame.isEmpty })
+        let edges = try XCTUnwrap(descendants(PeekResizeAreaView.self, in: content).first)
+        let edge = try XCTUnwrap(edges.rects(of: .right).first)
+        func moves(_ point: NSPoint, in view: NSView) -> Bool { peek.movesWindow(at: view.convert(point, to: nil)) }
+        let previewMiddle = content.convert(NSPoint(x: preview.bounds.midX, y: preview.bounds.midY), from: preview)
+        XCTAssertTrue(moves(NSPoint(x: content.bounds.midX, y: content.isFlipped ? 11 : content.bounds.maxY - 11), in: content),
+                      "The padding above the title moves it.")
+        XCTAssertTrue(moves(NSPoint(x: 5, y: previewMiddle.y), in: content), "The padding beside the preview moves it.")
+        XCTAssertFalse(moves(NSPoint(x: preview.bounds.midX, y: preview.bounds.midY), in: preview), "The preview selects and scrolls.")
+        XCTAssertFalse(moves(NSPoint(x: close.bounds.midX, y: close.bounds.midY), in: close), "A button is pressed.")
+        XCTAssertFalse(moves(NSPoint(x: edge.midX, y: edge.midY), in: edges), "The edge resizes it.")
+        peek.popoverDidDetach(peek.popover)
+        XCTAssertTrue(peek.isKept)
+        view.closeKeptReferencePeeks()
+    }
+
     @MainActor
     func testClassicStyleKeepsTheReferencePopover() async throws {
         _ = NSApplication.shared
