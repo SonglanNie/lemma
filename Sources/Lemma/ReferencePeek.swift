@@ -153,7 +153,9 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// Dragged away from its mention, the peek becomes a window of its own that stays open while the reader works on.
     func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
 
-    func popoverDidDetach(_ popover: NSPopover) { keep(); placeEdges() }
+    /// Detached, the popover's window moves only where its view lets the window server move it, which SwiftUI's views
+    /// do not: its title bar moves it from then on, as the VS Code style's peek's does.
+    func popoverDidDetach(_ popover: NSPopover) { frame.detached = true; keep(); placeEdges() }
 
     func popoverDidClose(_ notification: Notification) {
         removeMonitors()
@@ -365,6 +367,8 @@ final class PeekPreviewFrame {
     var fromTop = false
     /// Kept open beside the reader's work: its buttons then leave it open.
     var kept = false
+    /// Dragged away from its mention: a popover's window of its own, which its title bar then moves.
+    var detached = false
     /// Closes the peek.
     @ObservationIgnored var close: () -> Void = {}
     @ObservationIgnored private var start: CGSize?
@@ -415,16 +419,20 @@ struct ReferencePeekPane: View {
         VStack(alignment: .leading, spacing: 10) {
             if !chromeless {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: key.kind.symbol).foregroundStyle(Color.lemmaOlive)
-                Text(key.spokenTitle).font(.headline)
-                if let target {
-                    Text(store.printedLabel(for: target.pageIndex).map { "p. \($0) · PDF page \(target.pageIndex + 1)" } ?? "PDF page \(target.pageIndex + 1)")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if let count = store.analysis?.mentionCounts[key], count > 0, key.kind != .citation {
-                        Text("· \(count) \(count == 1 ? "reference" : "references")").font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: key.kind.symbol).foregroundStyle(Color.lemmaOlive)
+                    Text(key.spokenTitle).font(.headline)
+                    if let target {
+                        Text(store.printedLabel(for: target.pageIndex).map { "p. \($0) · PDF page \(target.pageIndex + 1)" } ?? "PDF page \(target.pageIndex + 1)")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let count = store.analysis?.mentionCounts[key], count > 0, key.kind != .citation {
+                            Text("· \(count) \(count == 1 ? "reference" : "references")").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
+                    Spacer()
                 }
-                Spacer()
+                // Anchored, a drag here detaches the popover, which AppKit does; detached, the drag is the title bar's.
+                .overlay { if frame.detached { WindowDragArea(onMoved: {}) } }
                 Button { frame.close() } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless).keyboardShortcut(.cancelAction).accessibilityLabel("Close reference preview")
             }
