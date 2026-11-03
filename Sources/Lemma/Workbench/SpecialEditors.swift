@@ -239,6 +239,22 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.5.0-fork.1: turn the page", "arrow-right", [
+            "← and → turn the page, as in PDFgear, at any zoom, in the main editor and the side editor: the next page's top comes to the top of the window, and two pages turn at a time in a two-page layout. They used to do nothing on a slide that fit the window.",
+            "An opened book takes the keyboard when nothing else has it, so the arrows work without a click on the page first."
+        ]),
+        ("Lemma 3.5.0-fork.1: open to the side", "split-horizontal", [
+            "⌘-drag a box around a figure, table or passage to open it beside the page. The arrow beside the split editor button opens this page, the selection or a box you draw there. ⌘-click still looks a word up.",
+            "⇧⌘-drag a box, in the main editor or the side editor, or click the picture-in-picture button, and it floats above the page in a window of its own, at the same size and zoom. Resizing the window scales it; keep several, from several books: they stay open across tabs and relaunches.",
+            "The side view opens fitted to the box, with the rest of the page around it, and names its tab after the figure, table or equation inside.",
+            "Opening the side editor, a notebook or a derivation, changing the layout or resizing a side bar keeps the page's zoom. Side pages open fitted to their text, not their paper.",
+            "In the Classic interface, a peek dragged away from its reference moves by its title bar every time, not only the first."
+        ]),
+        ("Lemma 3.5.0-fork.1: windows", "multiple-windows", [
+            "Drag a book's tab out of its window to open it in a new window there, onto another window's tabs or page to move it into that window, or choose Move Tab to New Window from the tab's menu.",
+            "A new window takes the side bars, panel and sizes of the window it comes from.",
+            "This fork's build has no Sparkle update feed, so an upstream release never installs over it. Lemma › Check for Updates… reports a newer release of this fork and opens its page."
+        ]),
         ("Lemma 3.5: windows and workspace files", "files", [
             "File › New Window (⇧⌘N) opens an empty workbench with its own tabs, layout, reading positions and Find queries. Windows restore on relaunch and share your library and annotation edits. Thanks to Songlan Nie for the multi-window approach.",
             "File › Add New File… creates text and Markdown files without a PDF. Files have their own tabs, automatic saving, ⌘S, Markdown and math preview, and a Workspace Files list for reopening them.",
