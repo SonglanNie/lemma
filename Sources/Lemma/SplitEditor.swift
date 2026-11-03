@@ -259,6 +259,11 @@ final class SecondaryPDFView: PDFView {
         if PDFView.zoomsByScrolling(event) { zoom(byScrolling: event) } else { super.scrollWheel(with: event) }
     }
 
+    /// ← and → turn the page, as in the main editor.
+    override func keyDown(with event: NSEvent) {
+        if let direction = Self.pageTurn(for: event) { turnPage(by: direction) } else { super.keyDown(with: event) }
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard onFloatBox != nil, event.modifierFlags.contains(.command) else { super.mouseDown(with: event); return }
         boxStart = convert(event.locationInWindow, from: nil)

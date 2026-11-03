@@ -88,6 +88,25 @@ final class QAHooks: NSObject {
             let state: [String: Any] = ["available": Updates.shared.isAvailable, "event": Updates.shared.lastEvent,
                                         "version": LemmaLinks.version, "canCheck": Updates.shared.canCheck]
             try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]).write(to: directory.appendingPathComponent("\(name).json"))
+        case "key":
+            // value=left|right|up|down: the arrow pressed in the reader's window, as the keyboard sends it, menus' key
+            // equivalents first and then the view that has the keyboard, which <name>.json names. A copy in the background
+            // has no key window, so the event goes to the reader's window itself rather than through the app.
+            let keys: [String: (code: UInt16, character: Int)] = ["left": (123, NSLeftArrowFunctionKey), "right": (124, NSRightArrowFunctionKey),
+                                                                  "down": (125, NSDownArrowFunctionKey), "up": (126, NSUpArrowFunctionKey)]
+            guard let key = info["value"].flatMap({ keys[$0] }) else { throw QAError.missing("value") }
+            guard let window = store.reader.view?.window else { throw QAError.missing("reader window") }
+            let character = String(UnicodeScalar(key.character)!)
+            for type in [NSEvent.EventType.keyDown, .keyUp] {
+                guard let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [.function, .numericPad],
+                                                   timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                   context: nil, characters: character, charactersIgnoringModifiers: character,
+                                                   isARepeat: false, keyCode: key.code) else { continue }
+                if type == .keyDown, NSApp.mainMenu?.performKeyEquivalent(with: event) == true { continue }
+                window.sendEvent(event)
+            }
+            let responder = window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"
+            try JSONSerialization.data(withJSONObject: ["firstResponder": responder]).write(to: directory.appendingPathComponent("\(name).json"))
         case "open":
             guard let path = info["path"] else { throw QAError.missing("path") }
             store.open(URL(fileURLWithPath: path))
