@@ -239,7 +239,7 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
-        ("Lemma 3.4.1-fork.2: turn the page", "arrow-right", [
+        ("Lemma 3.4.1-fork.1: turn the page", "arrow-right", [
             "← and → turn the page, as in PDFgear, at any zoom, in the main editor and the side editor: the next page's top comes to the top of the window, and two pages turn at a time in a two-page layout. They used to do nothing on a slide that fit the window.",
             "An opened book takes the keyboard when nothing else has it, so the arrows work without a click on the page first."
         ]),

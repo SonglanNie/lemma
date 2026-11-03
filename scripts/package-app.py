@@ -36,7 +36,7 @@ info = {
     "CFBundleIdentifier": identifier, "CFBundleExecutable": "Lemma",
     # The folder in Application Support that holds the library (WorkspaceRepository.defaultRoot).
     "LemmaSupportFolder": app_name,
-    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.4.1-fork.2",
+    "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "3.4.1-fork.1",
     "CFBundleVersion": "53", "LSMinimumSystemVersion": "15.0",
     "LSApplicationCategoryType": "public.app-category.education",
     "NSHighResolutionCapable": True,
