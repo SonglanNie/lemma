@@ -571,6 +571,18 @@ final class RegionPDFView: PDFView {
     var controller: ReaderController?
     var libraryDrop: PDFEditorDropHandler?
 
+    /// Takes the keyboard when nothing else in its window has it, as when a book opens, so ← and → turn the page without
+    /// a click on it first. A field or list that has the keyboard keeps it.
+    func takeKeyboardIfFree() {
+        guard let window, window.firstResponder == nil || window.firstResponder === window else { return }
+        window.makeFirstResponder(self)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        DispatchQueue.main.async { [weak self] in self?.takeKeyboardIfFree() }
+    }
+
     /// ⌘C copies running text, as a reader means to paste it: the line breaks inside a paragraph and the words
     /// hyphenated across lines are joined, and TeX's broken ligatures and accents repaired (`CleanCopy`).
     override func copy(_ sender: Any?) {
@@ -795,13 +807,14 @@ final class RegionPDFView: PDFView {
         }
     }
 
-    /// Escape stops drawing a box or capturing a region, as the bar's × does. With the ruler on, ↓ ↑ (or J K) step
-    /// through the lines, Return opens the line's first reference, Escape ends it.
+    /// Escape stops drawing a box or capturing a region, as the bar's × does. ← and → turn the page. With the ruler on,
+    /// ↓ ↑ (or J K) step through the lines, Return opens the line's first reference, Escape ends it.
     override func keyDown(with event: NSEvent) {
         if let controller, controller.regionMode, event.keyCode == 53, event.modifierFlags.isDisjoint(with: [.command, .control, .option, .shift]) {
             controller.regionMode = false
             return
         }
+        if let direction = Self.pageTurn(for: event) { turnPage(by: direction); return }
         guard let controller, controller.rulerMode, event.modifierFlags.isDisjoint(with: [.command, .control, .option]) else { super.keyDown(with: event); return }
         // While a proof is debugged: Return steps into the line's citation, Shift-Return steps out, Escape stops
         // (F11 is often taken by macOS, so the debugger also answers to the keys the ruler already uses).
@@ -1406,6 +1419,7 @@ struct PDFReaderSurface: NSViewRepresentable {
             view.dismissMarginNote()
             view.cancelInkGesture()
             view.document = document
+            DispatchQueue.main.async { [weak view] in view?.takeKeyboardIfFree() }
             view.autoScales = reading.scale <= 0
             if let page = document.page(at: min(reading.pageIndex, document.pageCount - 1)) { view.go(to: page) }
             if reading.scale > 0 { view.scaleFactor = CGFloat(reading.scale) }
@@ -1527,6 +1541,48 @@ extension PDFView {
         let region = convert(rectangle, to: page).intersection(page.bounds(for: .cropBox))
         guard !region.isNull, region.width > 2, region.height > 2 else { return nil }
         return (document.index(for: page), region)
+    }
+
+    /// The way ← (-1) or → (1) alone turns the page; nil for any other key. PDFKit's own arrows only scroll across a page
+    /// wider than the view, so they do nothing for a page that fits it, as a slide does.
+    static func pageTurn(for event: NSEvent) -> Int? {
+        guard event.modifierFlags.isDisjoint(with: [.command, .control, .option, .shift]) else { return nil }
+        switch event.keyCode {
+        case 123: return -1
+        case 124: return 1
+        default: return nil
+        }
+    }
+
+    /// Turns to the next page (1) or the previous one (-1), a spread in a two-page layout, at any zoom, as PDFgear does:
+    /// the page's top comes to the top of the view, scrolled as far across as before. The page turned from is the one at
+    /// the top of the view, the gap above a page counting as its own, so ← from partway down a page goes to the page
+    /// before it. Scrolling continuously, the turn is a scroll, which Back does not return from; a page at a time, it
+    /// goes to the page as PDFKit's Page Down does, which Back does.
+    func turnPage(by direction: Int) {
+        guard let document else { return }
+        let edge = CGPoint(x: bounds.midX, y: bounds.maxY - 1)
+        guard let page = page(for: edge, nearest: true) else { return }
+        let step = displayMode == .twoUp || displayMode == .twoUpContinuous ? 2 : 1
+        var index = document.index(for: page)
+        if edge.y < convert(page.bounds(for: .cropBox), from: page).minY { index += step }
+        let turned = direction > 0 ? min(index + step, document.pageCount - 1) : max(index - step, 0)
+        guard turned != index, let target = document.page(at: turned) else { return }
+        let top = target.bounds(for: .cropBox).maxY
+        if displayMode == .singlePageContinuous || displayMode == .twoUpContinuous {
+            guard let scrollView = documentView?.enclosingScrollView else { return }
+            let clip = scrollView.contentView
+            let moved = clip.convert(convert(CGPoint(x: 0, y: top), from: target), from: self)
+            let held = clip.convert(CGPoint(x: 0, y: bounds.maxY), from: self)
+            let origin = CGPoint(x: clip.bounds.minX, y: clip.bounds.minY + moved.y - held.y)
+            clip.scroll(to: clip.constrainBoundsRect(CGRect(origin: origin, size: clip.bounds.size)).origin)
+            scrollView.reflectScrolledClipView(clip)
+            // PDFKit takes its current page from a live scroll, not from its clip view: without this the status bar and
+            // the page strip kept the page turned from.
+            NotificationCenter.default.post(name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        } else {
+            go(to: PDFDestination(page: target, at: CGPoint(x: convert(CGPoint(x: bounds.minX, y: 0), to: page).x, y: top)))
+        }
     }
 
     /// A scroll with ⌘ held zooms rather than scrolls, for a mouse that cannot pinch. Its hit test returns the PDF view

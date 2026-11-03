@@ -239,6 +239,10 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.4.1-fork.2: turn the page", "arrow-right", [
+            "← and → turn the page, as in PDFgear, at any zoom, in the main editor and the side editor: the next page's top comes to the top of the window, and two pages turn at a time in a two-page layout. They used to do nothing on a slide that fit the window.",
+            "An opened book takes the keyboard when nothing else has it, so the arrows work without a click on the page first."
+        ]),
         ("Lemma 3.4.1-fork.1: open to the side", "split-horizontal", [
             "⌘-drag a box around a figure, table or passage to open it beside the page. The arrow beside the split editor button opens this page, the selection or a box you draw there. ⌘-click still looks a word up.",
             "⇧⌘-drag a box, in the main editor or the side editor, or click the picture-in-picture button, and it floats above the page in a window of its own, at the same size and zoom. Resizing the window scales it; keep several, from several books: they stay open across tabs and relaunches.",
