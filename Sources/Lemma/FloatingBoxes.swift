@@ -204,7 +204,7 @@ final class FloatingBoxPanel: NSPanel, NSWindowDelegate {
 /// The page in a floating box: filled by the box at any window size, sharp since the page stays a PDF. The view shows
 /// its own copy of the page, cropped to the box, so nothing outside the box is there to scroll to: zoomed in (pinch,
 /// ⌘+), it scrolls within the box.
-final class FloatingBoxView: PDFView {
+final class FloatingBoxView: GuardedPDFView {
     private let page: PDFPage
     private let region: CGRect
     private(set) var zoom: CGFloat

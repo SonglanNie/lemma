@@ -4,6 +4,10 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 
 ## Unreleased
 
+- Books with a page that crashes macOS's text selection now get their analysis, where before the whole book was left unanalysed, and Lemma no longer crashes on showing that page, including on reopening a book at it. The analysis runs again without the page, whose statements are then missing. Text can't be selected on the page and Find skips it; elsewhere in such a book a selection stays on one page and Select All is off.
+- While a book is first analysed, text selection, line numbers and the reading ruler wait until the analysis has reached the page, usually a second or so, and Find fills in its results when it finishes. Every book is analysed again once after this update.
+- If Lemma still stops on a page the analysis didn't catch, it says so at the next launch and turns off text selection on that page, so the crash can't repeat.
+
 ## 3.5.0 (November 2026)
 
 - Add standalone text and Markdown files with File › Add New File…, the Explorer and the command palette. Files have their own tabs, automatic saving, ⌘S, Markdown/math preview, Finder access and session restoration in both interface styles. Workspace Files retains closed documents, and windows share live file edits.

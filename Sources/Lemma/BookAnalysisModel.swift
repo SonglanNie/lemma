@@ -37,6 +37,10 @@ final class BookAnalysisModel {
     @ObservationIgnored private(set) var notation = NotationIndex([])
     /// Called on the main actor when an analysis is ready: read from its cache, or freshly made.
     @ObservationIgnored var onReady: (() -> Void)?
+    /// Which pages may be selected on, as far as this book's analysis has shown.
+    @ObservationIgnored private(set) var clearance: PageSelectionClearance
+    /// Called on the main actor when `clearance` changes.
+    @ObservationIgnored var onClearanceChange: (() -> Void)?
     /// The saved analysis is being read (megabytes for a long book) off the main thread.
     private(set) var isLoadingCache = false
     @ObservationIgnored private var cacheTask: Task<Void, Never>?
@@ -48,8 +52,13 @@ final class BookAnalysisModel {
     /// Reads the saved analysis in the background: decoding it and building its indexes takes tens of milliseconds for
     /// a long book, which the window's first frame and switching tabs should not wait for. Until it arrives the book reads
     /// as not analysed yet; its decorations appear with `onReady`.
-    init(workspaceID: String, repository: DocumentIndexRepository) {
+    ///
+    /// - Parameter waitsForAnalysis: whether pages wait for the analysis before they may be selected on. Only a helper can
+    ///   try a page safely: without one the analysis reads the book in this process, and waiting would protect nothing.
+    init(workspaceID: String, repository: DocumentIndexRepository, waitsForAnalysis: Bool = BookAnalysisModel.helperURL != nil) {
         self.workspaceID = workspaceID; self.repository = repository
+        clearance = PageSelectionClearance(blocked: repository.selectionBlockedPages(workspaceID))
+        if !waitsForAnalysis { clearance.readAllPages() }
         isLoadingCache = true
         let id = workspaceID
         cacheTask = Task { [weak self] in
@@ -85,7 +94,7 @@ final class BookAnalysisModel {
             let handle = HelperHandle()
             helper = handle
             task = Task { [weak self] in
-                let reporter = ProgressRelay { done, total in self?.progress = (done, total) }
+                let reporter = ProgressRelay(onBlocked: { self?.block($0) }) { done, total in self?.report(done, total) }
                 let outcome = await Self.runHelper(helperURL, source: url, id: id, root: repository.root, flag: flag, reporter: reporter, handle: handle)
                 guard let self, !flag.isCancelled else { return }
                 switch outcome {
@@ -94,18 +103,19 @@ final class BookAnalysisModel {
                     let prepared = await Task.detached(priority: .userInitiated) { repository.bookAnalysis(id).map(Prepared.init) }.value
                     guard !flag.isCancelled else { return }
                     self.task = nil; self.progress = nil; self.cancellation = nil; self.helper = nil
-                    guard let prepared else { self.failed = true; self.failure = "The analysis could not be read back."; return }
+                    guard let prepared else { self.failed = true; self.failure = "The analysis could not be read back."; self.clearAllPages(); return }
                     self.apply(prepared)
                     self.onReady?()
                 case let .failed(message):
                     self.task = nil; self.progress = nil; self.cancellation = nil; self.helper = nil
                     self.failed = true; self.failure = message
+                    self.clearAllPages()
                 }
             }
             return
         }
         task = Task { [weak self] in
-            let reporter = ProgressRelay { done, total in self?.progress = (done, total) }
+            let reporter = ProgressRelay { done, total in self?.report(done, total) }
             let prepared = await Task.detached(priority: .utility) { () -> Prepared? in
                 guard let result = BookAnalyzer.analyze(url: url, outline: outline, progress: { done, total in reporter.report(done, total) },
                                                         isCancelled: { flag.isCancelled }) else { return nil }
@@ -114,7 +124,7 @@ final class BookAnalysisModel {
             }.value
             guard let self, !flag.isCancelled else { return }
             self.task = nil; self.progress = nil; self.cancellation = nil
-            guard let prepared else { self.failed = true; return }
+            guard let prepared else { self.failed = true; self.clearAllPages(); return }
             self.apply(prepared)
             self.onReady?()
         }
@@ -124,6 +134,25 @@ final class BookAnalysisModel {
     func skip(_ reason: String) {
         cacheTask?.cancel(); cacheTask = nil; isLoadingCache = false; pendingStart = nil
         failed = true; failure = reason
+        clearAllPages()
+    }
+
+    private func report(_ done: Int, _ total: Int) {
+        progress = (done, total)
+        clearance.read(pages: done)
+        onClearanceChange?()
+    }
+
+    private func block(_ pageIndex: Int) {
+        clearance.block([pageIndex])
+        onClearanceChange?()
+    }
+
+    /// No analysis will say more about these pages, so waiting would only leave the book without selections. A bad page
+    /// not known yet can then crash Lemma, once: `PageInUseRecord` blocks it for the next launch.
+    private func clearAllPages() {
+        clearance.readAllPages()
+        onClearanceChange?()
     }
 
     enum HelperOutcome: Sendable { case finished, failed(String) }
@@ -147,6 +176,7 @@ final class BookAnalysisModel {
                 for line in buffer.append(data) {
                     let parts = line.split(separator: " ")
                     if parts.count == 3, parts[0] == "progress", let done = Int(parts[1]), let total = Int(parts[2]) { reporter.report(done, total) }
+                    else if let page = PageSelectionRecovery.pageIndex(inBlockedReport: line) { reporter.reportBlocked(page) }
                 }
                 if flag.isCancelled, process.isRunning { process.terminate() }
             }
@@ -161,11 +191,7 @@ final class BookAnalysisModel {
                 handle.finished()
                 let message = errorTail.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 if process.terminationReason == .exit, process.terminationStatus == 0 { continuation.resume(returning: .finished) }
-                else if process.terminationReason == .uncaughtSignal {
-                    continuation.resume(returning: .failed("The book's structure could not be read: the analysis stopped on this PDF. Reading, notes and search still work."))
-                } else {
-                    continuation.resume(returning: .failed(message.isEmpty ? "The analysis did not finish." : message))
-                }
+                else { continuation.resume(returning: .failed(message.isEmpty ? "The analysis did not finish." : message)) }
             }
             do {
                 try process.run()
@@ -242,6 +268,8 @@ final class BookAnalysisModel {
         usesByKey = prepared.usesByKey
         usedByKey = prepared.usedByKey
         notation = prepared.notation
+        clearance.block(repository.selectionBlockedPages(workspaceID))
+        clearAllPages()
     }
 
     var structure: DocumentStructure { analysis?.structure ?? DocumentStructure() }
@@ -371,9 +399,16 @@ final class LineBuffer: @unchecked Sendable {
 /// Forwards progress from the background analysis to the main actor, at most once per call site's cadence.
 final class ProgressRelay: @unchecked Sendable {
     private let update: @MainActor (Int, Int) -> Void
-    init(_ update: @escaping @MainActor (Int, Int) -> Void) { self.update = update }
+    private let blocked: @MainActor (Int) -> Void
+    init(onBlocked blocked: @escaping @MainActor (Int) -> Void = { _ in }, _ update: @escaping @MainActor (Int, Int) -> Void) {
+        self.update = update; self.blocked = blocked
+    }
     func report(_ done: Int, _ total: Int) {
         let update = update
         Task { @MainActor in update(done, total) }
+    }
+    func reportBlocked(_ pageIndex: Int) {
+        let blocked = blocked
+        Task { @MainActor in blocked(pageIndex) }
     }
 }

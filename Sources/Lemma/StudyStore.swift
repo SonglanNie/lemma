@@ -682,8 +682,21 @@ final class StudyStore {
         let model = analyses[workspace.id] ?? BookAnalysisModel(workspaceID: workspace.id, repository: indexRepository)
         analyses[workspace.id] = model
         index.analysis = model
+        // Selecting on a bad page ends Lemma, and the reader selects on the page in view as soon as it shows it: nothing may
+        // select here until the analysis has read the page in its helper. A model kept from an earlier opening of the book
+        // knows its pages already, and its new document must hear of them now.
+        ThemedPageProvider.shared.track(pdf, book: workspace.id, clearance: model.clearance)
+        model.onClearanceChange = { [weak self, weak index, weak model, weak pdf] in
+            guard let model, let pdf else { return }
+            ThemedPageProvider.shared.update(model.clearance, for: pdf)
+            guard let self, self.document === pdf, self.reader.refreshClearedPages() else { return }
+            index?.invalidateMentions()
+            self.reader.updateViewport()
+            self.reader.view?.refreshCaptureOverlay()
+        }
         model.onReady = { [weak self, weak index, weak model] in
             index?.invalidateMentions()
+            if self?.analysis === model { self?.reader.findAgainInClearedPages() }
             self?.reader.view?.refreshCaptureOverlay()
             if self?.analysis === model { self?.refreshOutline() }
         }
@@ -990,6 +1003,11 @@ final class StudyStore {
             openSpecial(.welcome)
         }
         if let message = error { error = nil; notify(message, severity: .error) }
+        if let crashed = app.crashedPage {
+            app.crashedPage = nil
+            let title = library.first { $0.id == crashed.book }?.title ?? "a book"
+            notify("Lemma stopped unexpectedly on PDF page \(crashed.pageIndex + 1) of “\(title)”, so text can't be selected on that page from now on.", severity: .warning, timeout: nil)
+        }
     }
 
     func capture() throws -> SourceAnchor {

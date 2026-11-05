@@ -174,7 +174,8 @@ final class ReferenceIndex {
     }
 
     private func scan(_ index: Int) {
-        guard !cache.scannedPages.contains(index), let page = document?.page(at: index) else { return }
+        // A refused page finds nothing now, and must not count as scanned.
+        guard !cache.scannedPages.contains(index), let page = document?.page(at: index), page.admitsSelection else { return }
         for target in PageReferenceAnalyzer.definitions(on: page, pageIndex: index) where definitions[target.key] == nil {
             definitions[target.key] = target
             cache.targets.append(target)
