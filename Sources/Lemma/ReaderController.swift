@@ -202,6 +202,20 @@ final class ReaderController {
     var rulerLine: RulerLine? { didSet { if rulerLine != oldValue { view?.updateOverlay() } } }
     @ObservationIgnored private var lineCache: [Int: [CGRect]] = [:]
     @ObservationIgnored private weak var lineDocument: PDFDocument?
+    @ObservationIgnored private var admittedPagesInView: Set<Int> = []
+    /// The last search skipped pages the analysis had not reached.
+    @ObservationIgnored private var searchMissedPages = false
+    /// Where that search's first match is to be looked for, until one has been shown.
+    @ObservationIgnored private var pendingFindStart: Int?
+
+    /// Whether the pages in view that may select have changed since last asked: what they show depends on it.
+    func refreshClearedPages() -> Bool {
+        guard let view, let document = view.document, let range = view.visiblePageIndexes() else { return false }
+        let admitted = Set(range.filter { document.page(at: $0)?.admitsSelection == true })
+        guard admitted != admittedPagesInView else { return false }
+        admittedPagesInView = admitted
+        return true
+    }
 
     /// The page's lines in reading order (cached per page).
     func readingLines(onPage pageIndex: Int) -> [CGRect] {
@@ -209,7 +223,8 @@ final class ReaderController {
         if lineDocument !== document { lineCache = [:]; lineDocument = document }
         if let cached = lineCache[pageIndex] { return cached }
         guard !isScrubbing else { return [] }
-        guard let page = document.page(at: pageIndex) else { return [] }
+        // A refused page has no lines yet: remembering that would outlast the refusal.
+        guard let page = document.page(at: pageIndex), page.admitsSelection else { return [] }
         let lines = ReferenceLayout.readingLines(PageReferenceAnalyzer.columnFragments(on: page), page: page.bounds(for: .cropBox))
         lineCache[pageIndex] = lines
         return lines
@@ -298,7 +313,7 @@ final class ReaderController {
     }
     /// Shows matches found elsewhere (the Search view's, from the book's page texts) as this book's find results
     /// without moving the page. Selections are built a few pages at a time, so the reader stays responsive.
-    func showMatches(_ matches: [(pageIndex: Int, range: NSRange)], for query: String) {
+    func showMatches(_ matches: [(pageIndex: Int, range: NSRange)], for query: String, then finished: (() -> Void)? = nil) {
         cancelSearch(); searchResults = []; searchIndex = 0
         searchText = query
         hasSearched = !query.isEmpty
@@ -319,6 +334,7 @@ final class ReaderController {
             guard !Task.isCancelled, let self else { return }
             self.searchResults.append(contentsOf: pending)
             self.isSearching = false; self.marking = nil
+            finished?()
         }
     }
     func resetSearch() { cancelSearch(); searchText = ""; searchResults = []; searchIndex = 0; hasSearched = false }
@@ -329,6 +345,12 @@ final class ReaderController {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         hasSearched = !query.isEmpty
         guard let document = view?.document, hasSearched else { return }
+        guard document.admitsEveryPage else {
+            let start = startPage ?? 0
+            pendingFindStart = start
+            findInPageTexts(query, in: document) { [weak self] in self?.goToFirstMatch(from: start, in: document) }
+            return
+        }
         searchDocument = document; isSearching = true
         searchObservers.append(NotificationCenter.default.addObserver(forName: .PDFDocumentDidFindMatch, object: document, queue: .main) { [weak self] notification in
             guard let document = notification.object as? PDFDocument,
@@ -348,16 +370,60 @@ final class ReaderController {
                 guard let self, let document = self.searchDocument, ObjectIdentifier(document) == documentID else { return }
                 for observer in self.searchObservers { NotificationCenter.default.removeObserver(observer) }
                 self.searchObservers = []; self.searchDocument = nil; self.isSearching = false
-                if !self.searchResults.isEmpty {
-                    let start = startPage.flatMap { page in
-                        self.searchResults.firstIndex { selection in selection.pages.first.map { document.index(for: $0) >= page } ?? false }
-                    }
-                    self.goToMatch(start ?? 0)
-                }
+                self.goToFirstMatch(from: startPage, in: document)
             }
         })
         document.beginFindString(query, withOptions: findOptions)
     }
+    private func goToFirstMatch(from startPage: Int?, in document: PDFDocument) {
+        guard !searchResults.isEmpty else { return }
+        let start = startPage.flatMap { page in
+            searchResults.firstIndex { selection in selection.pages.first.map { document.index(for: $0) >= page } ?? false }
+        }
+        // The next match may be on a page the analysis has not reached: `findAgainInClearedPages` goes on from here.
+        if start == nil, searchMissedPages { return }
+        pendingFindStart = nil
+        goToMatch(start ?? 0)
+    }
+
+    /// Searches the pages' text. PDFKit's own search stops for good at a page that gives no selection, which would hide every
+    /// match after it; here a refused page only loses its own matches. A few pages at a time, so the reader stays responsive.
+    private func findInPageTexts(_ query: String, in document: PDFDocument, then finished: @escaping () -> Void) {
+        isSearching = true
+        searchMissedPages = ThemedPageProvider.shared.isWaitingForPages(in: document)
+        let options = findOptions
+        marking = Task { @MainActor [weak self] in
+            var matches: [(pageIndex: Int, range: NSRange)] = []
+            var turn = Date.now
+            for pageIndex in 0..<document.pageCount {
+                guard !Task.isCancelled else { return }
+                guard let page = document.page(at: pageIndex), let text = page.string as NSString? else { continue }
+                var from = 0
+                while page.admitsSelection, from < text.length {
+                    let found = text.range(of: query, options: options, range: NSRange(location: from, length: text.length - from))
+                    guard found.location != NSNotFound, found.length > 0 else { break }
+                    matches.append((pageIndex, found))
+                    from = found.upperBound
+                }
+                if Date.now.timeIntervalSince(turn) > 0.012 {
+                    try? await Task.sleep(for: .milliseconds(4))
+                    turn = .now
+                }
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.showMatches(matches, for: query, then: finished)
+        }
+    }
+
+    /// A search made while the analysis was still reading the book skipped the pages it had not reached.
+    func findAgainInClearedPages() {
+        guard searchMissedPages, hasSearched, let document = view?.document else { return }
+        let start = pendingFindStart
+        findInPageTexts(searchText.trimmingCharacters(in: .whitespacesAndNewlines), in: document) { [weak self] in
+            if let start { self?.goToFirstMatch(from: start, in: document) }
+        }
+    }
+
     func nextMatch() {
         guard !searchResults.isEmpty else { return }
         searchIndex = (searchIndex + 1) % searchResults.count
@@ -563,7 +629,7 @@ final class ReaderController {
 }
 
 @MainActor
-final class RegionPDFView: PDFView {
+final class RegionPDFView: GuardedPDFView {
     var controller: ReaderController?
     var libraryDrop: PDFEditorDropHandler?
 

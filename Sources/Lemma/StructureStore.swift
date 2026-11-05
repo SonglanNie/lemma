@@ -104,7 +104,8 @@ extension StudyStore {
 
     /// Lines of a page's text with their rectangles, kept for the pages read most recently.
     func pageTextMap(_ pageIndex: Int) -> PageTextMap? {
-        guard let page = document?.page(at: pageIndex), let id = workspace?.id else { return nil }
+        // A refused page has no lines yet: remembering that would outlast the refusal.
+        guard let page = document?.page(at: pageIndex), page.admitsText, let id = workspace?.id else { return nil }
         let key = "\(id)#\(pageIndex)"
         if let cached = PageTextMaps.shared.value(for: key) { return cached }
         let map = PageTextMap(page: page)

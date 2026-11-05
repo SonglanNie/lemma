@@ -24,7 +24,9 @@ public enum PageTextFile {
 
     /// Reads every page's text. PDFKit keeps what text extraction builds for as long as its document lives, so the
     /// pages are read in batches, each from a fresh document drained by its own pool.
-    public static func extract(source: URL, batch: Int = 40, isCancelled: () -> Bool = { false }) -> [PageText]? {
+    ///
+    /// - Parameter textGuard: what keeps the helper off pages whose text never returns; such a page reads as empty.
+    public static func extract(source: URL, batch: Int = 40, textGuard: PageTextGuard? = nil, isCancelled: () -> Bool = { false }) -> [PageText]? {
         guard let count = autoreleasepool(invoking: { PDFDocument(url: source)?.pageCount }) else { return nil }
         var pages: [PageText] = []
         pages.reserveCapacity(count)
@@ -34,6 +36,7 @@ public enum PageTextFile {
             let end = min(count, start + max(1, batch))
             let read = autoreleasepool { () -> Bool in
                 guard let document = PDFDocument(url: source) else { return false }
+                textGuard?.watch(document)
                 for index in start..<end {
                     autoreleasepool {
                         let page = document.page(at: index)
