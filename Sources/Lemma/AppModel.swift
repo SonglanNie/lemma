@@ -9,6 +9,7 @@ import Observation
 final class AppModel {
     static let primaryWindowID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     let repository: WorkspaceRepository
+    /// The page the last run of Lemma died on, until a window has told the reader.
     let workspaceFileRepository: WorkspaceFileRepository
     var workspaceFiles: [String] = []
     var fileBuffers: [String: WorkspaceFileBuffer] = [:]
@@ -74,6 +75,7 @@ final class AppModel {
         let root = supportRoot ?? ProcessInfo.processInfo.environment["LEMMA_SUPPORT_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? WorkspaceRepository.defaultRoot
         repository = WorkspaceRepository(root: root)
+        ThemedPageProvider.shared.recordPagesInUse(in: DocumentIndexRepository(root: root))
         workspaceFileRepository = WorkspaceFileRepository(root: root)
         do { workspaceFiles = try workspaceFileRepository.list() }
         catch { startupError = "Could not read Workspace Files: \(error.localizedDescription)" }
@@ -261,6 +263,10 @@ final class AppModel {
         guard let loaded = PDFDocument(url: url) else { return nil }
         if loaded.isLocked, let password = passwords[book.fingerprint] { loaded.unlock(withPassword: password) }
         loaded.delegate = ThemedPageProvider.shared
+        // Only the pages already known to be bad are refused. A view that shows this document follows the book's analysis.
+        var clearance = DocumentIndexRepository(root: repository.root).pageTextClearance(book.id)
+        clearance.readAllPages()
+        ThemedPageProvider.shared.track(loaded, book: book.id, title: book.title, clearance: clearance)
         return loaded
     }
 
@@ -300,6 +306,7 @@ final class AppModel {
         }
         saveWindows()
         BookAnalysisModel.terminateHelpers()
+        ThemedPageProvider.shared.stopRecordingPagesInUse()
         repository.writer.waitUntilIdle()
         return true
     }

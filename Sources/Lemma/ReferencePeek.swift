@@ -581,7 +581,7 @@ struct PeekPDFSurface: NSViewRepresentable {
     }
 }
 
-final class PeekPDFView: PDFView {
+final class PeekPDFView: GuardedPDFView {
     var target: ReferenceTarget? { didSet { fittedWidth = nil; needsLayout = true } }
     /// The zoom the page opens at no larger than: a page narrower than the preview is centred in it.
     var largestScale: CGFloat = .greatestFiniteMagnitude

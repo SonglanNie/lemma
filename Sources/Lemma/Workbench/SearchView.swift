@@ -158,11 +158,13 @@ final class PageTextCache: @unchecked Sendable {
     /// Has the helper write the book's page texts unless they are already at hand. One reading per book at a time:
     /// a new query while a book is being read waits for that reading.
     func prepare(id: String, path: String) async {
-        guard let helper, let file = file(for: id) else { return }
+        guard let helper, let folder, let file = file(for: id) else { return }
+        // The folder is the support folder's `Indexes`, where the helper keeps a book's blocked pages too.
+        let root = folder.deletingLastPathComponent()
         if lock.withLock({ books[id] != nil || failed.contains(id) }) || FileManager.default.fileExists(atPath: file.path) { return }
         let task: Task<Void, Never> = lock.withLock {
             if let running = reading[id] { return running }
-            let task = Task.detached(priority: .utility) { await Self.read(path, into: file, helper: helper) }
+            let task = Task.detached(priority: .utility) { await Self.read(path, id: id, root: root, into: file, helper: helper) }
             reading[id] = task
             return task
         }
@@ -174,11 +176,11 @@ final class PageTextCache: @unchecked Sendable {
         }
     }
 
-    private static func read(_ path: String, into file: URL, helper: URL) async {
+    private static func read(_ path: String, id: String, root: URL, into file: URL, helper: URL) async {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let process = Process()
             process.executableURL = helper
-            process.arguments = ["--pagetext", path, "--output", file.path]
+            process.arguments = ["--pagetext", path, "--output", file.path, "--workspace", id, "--root", root.path]
             process.qualityOfService = .utility
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
