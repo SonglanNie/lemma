@@ -4,6 +4,8 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 
 ## Unreleased
 
+- Reading a book no longer crashes when a page's text ends with a label such as “Theorem 5.”, which stopped the whole analysis of that book.
+
 ## 3.5.0 (November 2026)
 
 - Add standalone text and Markdown files with File › Add New File…, the Explorer and the command palette. Files have their own tabs, automatic saving, ⌘S, Markdown/math preview, Finder access and session restoration in both interface styles. Workspace Files retains closed documents, and windows share live file edits.

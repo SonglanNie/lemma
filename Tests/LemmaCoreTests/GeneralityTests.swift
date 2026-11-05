@@ -46,6 +46,13 @@ final class GeneralityTests: XCTestCase {
         XCTAssertEqual(analysis.headings.map(\.title), ["1 Introduction", "2 Ridge regression"], "A PDF without an outline gets one from its bold numbered headings.")
     }
 
+    func testALabelClosingThePageHasNoTitle() {
+        let box = PageRegion(CGRect(x: 0, y: 0, width: 10, height: 10))
+        let target = ReferenceTarget(key: ReferenceKey(kind: .theorem, number: "5", name: "Theorem"), pageIndex: 0, anchor: box, region: box,
+                                     origin: .text, location: 10)
+        XCTAssertNil(StructureAnalyzer.title(after: target, in: ["see also: Theorem 5."]))
+    }
+
     func testBookWithChaptersIndexAuthorYearCitationsAndProofs() throws {
         let analysis = try analyze("book-chapters")
         XCTAssertEqual(analysis.numbering?.label(for: 4), "1", "Printed numbers come from the PDF's page labels.")
