@@ -223,7 +223,8 @@ public enum StructureAnalyzer {
         // “1.5.1. Jensen’s inequality. Suppose…”: a name of at most five words, then a full stop and a new sentence.
         if rest.hasPrefix(". ") || rest.hasPrefix(".") {
             let words = trimmed.split(separator: " ", maxSplits: 7, omittingEmptySubsequences: true)
-            for count in 1...min(5, words.count) {
+            // A label closing the page has nothing after it.
+            for count in 1..<(min(5, words.count) + 1) {
                 let candidate = words.prefix(count).joined(separator: " ")
                 guard candidate.hasSuffix("."), count < words.count, words[count].first?.isUppercase == true else { continue }
                 let name = String(candidate.dropLast())
