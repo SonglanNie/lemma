@@ -8,6 +8,7 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 - While a book is first analysed, text selection, line numbers and the reading ruler wait until the analysis has reached the page, usually a second or so, and Find fills in its results when it finishes. Every book is analysed again once after this update.
 - If Lemma still stops on a page the analysis didn't catch, it says so at the next launch and turns off text selection on that page, so the crash can't repeat.
 - Reading a book no longer crashes when a page's text ends with a label such as “Theorem 5.”, which stopped the whole analysis of that book.
+- Analysing or indexing a book now stops at 6 GB of memory. On a few pages macOS's text extraction never finishes and took memory until the whole Mac slowed down; such a book is now left without its analysis, and selection works as usual.
 
 ## 3.5.0 (November 2026)
 

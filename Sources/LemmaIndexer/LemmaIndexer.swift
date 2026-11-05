@@ -12,6 +12,7 @@ struct LemmaIndexer {
             return args[index + 1]
         }
         exitWithParent()
+        limitMemory()
         // Reading a book's structure runs here rather than in the app, so a malformed PDF cannot take the reader down.
         if let source = argument("--analyze") {
             guard let id = argument("--workspace"), let root = argument("--root") else {
@@ -80,6 +81,29 @@ struct LemmaIndexer {
         if getppid() != parent { exit(3) }
     }
     nonisolated(unsafe) static var parentWatch: DispatchSourceProcess?
+
+    /// The most memory a helper may use. The heaviest of 6,688 books took 1.3 GB.
+    static let memoryLimit: UInt64 = 6 << 30
+
+    /// On a few pages PDFKit's text extraction never returns, and takes memory until the whole Mac slows down. No check can
+    /// foresee such a page and nothing can interrupt the call, so the helper stops itself: the book's analysis or indexing
+    /// then fails, as for a malformed PDF, and the pages waiting for it are released.
+    static func limitMemory() {
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler {
+            var usage = rusage_info_current()
+            let status = withUnsafeMutablePointer(to: &usage) {
+                $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_CURRENT, $0) }
+            }
+            guard status == 0, usage.ri_phys_footprint > memoryLimit else { return }
+            FileHandle.standardError.write(Data("Reading this PDF's text took too much memory, so it was stopped.\n".utf8))
+            _exit(4)
+        }
+        timer.resume()
+        memoryWatch = timer
+    }
+    nonisolated(unsafe) static var memoryWatch: DispatchSourceTimer?
 
     /// Analyses a book in a child process, relaying its progress. CoreGraphics traps on a few ordinary pages, which no
     /// check can foresee (`PageSelectionGuard`): when the child traps, it runs again without selections on that page, so
