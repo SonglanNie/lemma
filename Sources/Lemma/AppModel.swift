@@ -264,8 +264,8 @@ final class AppModel {
         guard let loaded = PDFDocument(url: url) else { return nil }
         if loaded.isLocked, let password = passwords[book.fingerprint] { loaded.unlock(withPassword: password) }
         loaded.delegate = ThemedPageProvider.shared
-        // No analysis runs for a view beside the book, so only the pages already known to be bad are refused.
-        var clearance = PageSelectionClearance(blocked: DocumentIndexRepository(root: repository.root).selectionBlockedPages(book.id))
+        // Only the pages already known to be bad are refused. A view that shows this document follows the book's analysis.
+        var clearance = DocumentIndexRepository(root: repository.root).pageTextClearance(book.id)
         clearance.readAllPages()
         ThemedPageProvider.shared.track(loaded, book: book.id, clearance: clearance)
         return loaded

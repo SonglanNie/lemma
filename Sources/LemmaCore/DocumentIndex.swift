@@ -107,14 +107,16 @@ public enum SemanticText {
 public enum DocumentIndexer {
     /// Each completed page is an atomic checkpoint. Resuming skips those pages. Whole documents are indexed in the
     /// packaged worker (`LemmaIndexer`), which Lemma runs at utility priority and pauses on battery and when the Mac
-    /// is hot; `pageDone` reports each checkpoint (pages done, pages in all).
+    /// is hot; `pageDone` reports each checkpoint (pages done, pages in all). A page `textGuard` refuses reads as empty, so it
+    /// is indexed by OCR like a scanned page: drawing it is safe.
     @MainActor
-    public static func index(source: URL, id: String, repository: DocumentIndexRepository, jobName: String,
+    public static func index(source: URL, id: String, repository: DocumentIndexRepository, jobName: String, textGuard: PageTextGuard? = nil,
                              pageDone: ((Int, Int) -> Void)? = nil) async throws {
         // A book whose PDF changed on disk keeps its workspace id and records the new bytes' fingerprint.
         let expected = (try? WorkspaceRepository(root: repository.root).load(id: id))?.fingerprint ?? id
         guard try WorkspaceRepository.fingerprint(of: source) == expected,
               let document = PDFDocument(url: source), document.pageCount > 0 else { throw CocoaError(.fileReadCorruptFile) }
+        textGuard?.watch(document)
         var completed = Set(try repository.pages(id).map(\.pageIndex))
         var progress = IndexProgress(status: .running, completedPages: completed.count, totalPages: document.pageCount, jobName: jobName)
         try repository.save(progress, id: id)

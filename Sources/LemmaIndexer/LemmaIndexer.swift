@@ -23,7 +23,7 @@ struct LemmaIndexer {
         }
         if let source = argument("--analyze-pages") {
             guard let id = argument("--workspace"), let root = argument("--root"),
-                  let blocked = PageSelectionRecovery.pages(inArgument: argument("--blocked-pages") ?? "") else {
+                  let blocked = PageTextRecovery.pages(inArgument: argument("--blocked-pages") ?? "") else {
                 FileHandle.standardError.write(Data("Expected --analyze-pages PDF --workspace fingerprint --root support --blocked-pages 1,2\n".utf8))
                 exit(2)
             }
@@ -33,11 +33,13 @@ struct LemmaIndexer {
         // Library-wide search reads page texts here too: PDFKit's text extraction can take hundreds of megabytes for
         // a long book, which this process gives back when it exits.
         if let source = argument("--pagetext") {
-            guard let output = argument("--output") else {
-                FileHandle.standardError.write(Data("Expected --pagetext PDF --output file\n".utf8))
+            guard let output = argument("--output"), let id = argument("--workspace"), let root = argument("--root") else {
+                FileHandle.standardError.write(Data("Expected --pagetext PDF --output file --workspace fingerprint --root support\n".utf8))
                 exit(2)
             }
-            guard let pages = PageTextFile.extract(source: URL(fileURLWithPath: source)) else {
+            let textGuard = guardText(id: id, repository: DocumentIndexRepository(root: URL(fileURLWithPath: root)))
+            defer { withExtendedLifetime(textGuard) {} }
+            guard let pages = PageTextFile.extract(source: URL(fileURLWithPath: source), textGuard: textGuard) else {
                 FileHandle.standardError.write(Data("Could not open the PDF.\n".utf8))
                 exit(1)
             }
@@ -55,9 +57,11 @@ struct LemmaIndexer {
             exit(2)
         }
         let output = FileHandle.standardOutput
+        let repository = DocumentIndexRepository(root: URL(fileURLWithPath: root))
+        let textGuard = guardText(id: id, repository: repository)
+        defer { withExtendedLifetime(textGuard) {} }
         do {
-            try await DocumentIndexer.index(source: URL(fileURLWithPath: source), id: id,
-                repository: DocumentIndexRepository(root: URL(fileURLWithPath: root)), jobName: name) { done, total in
+            try await DocumentIndexer.index(source: URL(fileURLWithPath: source), id: id, repository: repository, jobName: name, textGuard: textGuard) { done, total in
                 output.write(Data("progress \(done) \(total)\n".utf8))
             }
             output.write(Data("done\n".utf8))
@@ -86,17 +90,19 @@ struct LemmaIndexer {
     static let memoryLimit: UInt64 = 6 << 30
 
     /// On a few pages PDFKit's text extraction never returns, and takes memory until the whole Mac slows down. No check can
-    /// foresee such a page and nothing can interrupt the call, so the helper stops itself: the book's analysis or indexing
-    /// then fails, as for a malformed PDF, and the pages waiting for it are released.
+    /// foresee such a page and nothing can interrupt the call, so the helper stops itself. Reaching the limit in a call on a
+    /// page's text blames that page: see `continueWithoutPage`.
     static func limitMemory() {
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .userInitiated))
-        timer.schedule(deadline: .now() + 1, repeating: 1)
+        // A runaway takes more than a gigabyte a second, and a helper at utility priority has its timers put off unless told not to.
+        timer.schedule(deadline: .now() + 1, repeating: .milliseconds(250), leeway: .milliseconds(50))
         timer.setEventHandler {
             var usage = rusage_info_current()
             let status = withUnsafeMutablePointer(to: &usage) {
                 $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_CURRENT, $0) }
             }
             guard status == 0, usage.ri_phys_footprint > memoryLimit else { return }
+            continueWithoutPage()
             FileHandle.standardError.write(Data("Reading this PDF's text took too much memory, so it was stopped.\n".utf8))
             _exit(4)
         }
@@ -105,8 +111,32 @@ struct LemmaIndexer {
     }
     nonisolated(unsafe) static var memoryWatch: DispatchSourceTimer?
 
+    /// The guard reading a book in this process, and where its blocked pages are kept.
+    nonisolated(unsafe) static var textReading: (textGuard: PageTextGuard, id: String, repository: DocumentIndexRepository)?
+
+    /// The guard for reading a book's text here: it refuses the pages known to be bad, and names the page in use if the helper
+    /// reaches its memory limit. Called before any page is read.
+    static func guardText(id: String, repository: DocumentIndexRepository, selectionBlocked: Set<Int> = [],
+                          onSelecting: @escaping (Int) -> Void = { _ in }) -> PageTextGuard {
+        let textGuard = PageTextGuard(selectionBlocked: selectionBlocked, textBlocked: repository.textBlockedPages(id), onSelecting: onSelecting)
+        textReading = (textGuard, id, repository)
+        return textGuard
+    }
+
+    /// Records the page in use as one whose text never returns, and starts this helper over: the call can't be interrupted, and
+    /// only a new process image gives the memory back. It keeps its process, so whoever started it, pauses it or reads its
+    /// output sees no difference. Its next run refuses the page. Returns only when that can't help.
+    static func continueWithoutPage() {
+        guard let reading = textReading, let executable = Bundle.main.executablePath,
+              let page = PageTextRecovery.textPage(toBlock: reading.textGuard.pageInUse, known: reading.textGuard.textBlocked),
+              (try? reading.repository.addTextBlockedPages([page], id: reading.id)) != nil else { return }
+        FileHandle.standardOutput.write(Data((PageTextRecovery.textBlockedReport(pageIndex: page) + "\n").utf8))
+        FileHandle.standardError.write(Data("The text of page index \(page) never finished reading; going on without it.\n".utf8))
+        execv(executable, CommandLine.unsafeArgv)
+    }
+
     /// Analyses a book in a child process, relaying its progress. CoreGraphics traps on a few ordinary pages, which no
-    /// check can foresee (`PageSelectionGuard`): when the child traps, it runs again without selections on that page, so
+    /// check can foresee (`PageTextGuard`): when the child traps, it runs again without selections on that page, so
     /// the book loses that page's statements rather than its whole analysis. Each run starts over.
     static func superviseAnalysis(source: String, id: String, root: String) -> Never {
         func fail(_ message: String) -> Never {
@@ -115,12 +145,12 @@ struct LemmaIndexer {
         }
         guard let executable = Bundle.main.executableURL else { fail("The analysis could not start.") }
         let repository = DocumentIndexRepository(root: URL(fileURLWithPath: root))
-        var recovery = PageSelectionRecovery()
+        var recovery = PageTextRecovery()
         while true {
             let process = Process()
             process.executableURL = executable
             process.arguments = ["--analyze-pages", source, "--workspace", id, "--root", root,
-                                 "--blocked-pages", PageSelectionRecovery.argument(for: recovery.blocked)]
+                                 "--blocked-pages", PageTextRecovery.argument(for: recovery.selectionBlocked)]
             process.qualityOfService = .utility
             let output = Pipe()
             process.standardOutput = output
@@ -130,15 +160,15 @@ struct LemmaIndexer {
             guard process.terminationReason == .uncaughtSignal else {
                 // Kept only now: Swift's own runtime errors trap too, and a run that gives up has shown nothing about its pages.
                 if process.terminationStatus == 0 {
-                    do { try repository.addSelectionBlockedPages(recovery.blocked, id: id) } catch { fail(error.localizedDescription) }
+                    do { try repository.addSelectionBlockedPages(recovery.selectionBlocked, id: id) } catch { fail(error.localizedDescription) }
                 }
                 exit(process.terminationStatus)
             }
             // A trap arrives as SIGTRAP on Apple silicon and as SIGILL on Intel.
-            guard [SIGTRAP, SIGILL].contains(process.terminationStatus), recovery.block(selecting), let selecting else {
+            guard [SIGTRAP, SIGILL].contains(process.terminationStatus), recovery.blockSelection(selecting), let selecting else {
                 fail("The book's structure could not be read: the analysis stopped on this PDF. Reading, notes and search still work.")
             }
-            FileHandle.standardOutput.write(Data((PageSelectionRecovery.blockedReport(pageIndex: selecting) + "\n").utf8))
+            FileHandle.standardOutput.write(Data((PageTextRecovery.blockedReport(pageIndex: selecting) + "\n").utf8))
             FileHandle.standardError.write(Data("Reading page index \(selecting) stopped the analysis; running it again without that page's layout.\n".utf8))
         }
     }
@@ -154,7 +184,7 @@ struct LemmaIndexer {
             while let end = pending.firstIndex(of: UInt8(ascii: "\n")) {
                 let line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self)
                 pending.removeSubrange(pending.startIndex...end)
-                if let page = PageSelectionRecovery.pageIndex(inMarker: line) { selecting = page }
+                if let page = PageTextRecovery.pageIndex(inMarker: line) { selecting = page }
                 else { FileHandle.standardOutput.write(Data((line + "\n").utf8)) }
             }
         }
@@ -167,11 +197,12 @@ struct LemmaIndexer {
             exit(1)
         }
         let output = FileHandle.standardOutput
-        let selectionGuard = PageSelectionGuard(blocked: blocked) { page in
-            output.write(Data((PageSelectionRecovery.marker(pageIndex: page) + "\n").utf8))
+        let repository = DocumentIndexRepository(root: root)
+        let textGuard = guardText(id: id, repository: repository, selectionBlocked: blocked) { page in
+            output.write(Data((PageTextRecovery.marker(pageIndex: page) + "\n").utf8))
         }
-        selectionGuard.watch(document)
-        defer { withExtendedLifetime(selectionGuard) {} }
+        textGuard.watch(document)
+        defer { withExtendedLifetime(textGuard) {} }
         let analysis = BookAnalyzer.analyze(document: document, outline: OutlineReader.items(in: document), progress: { done, total in
             output.write(Data("progress \(done) \(total)\n".utf8))
         })
@@ -180,7 +211,7 @@ struct LemmaIndexer {
             exit(1)
         }
         do {
-            try DocumentIndexRepository(root: root).save(analysis, id: id)
+            try repository.save(analysis, id: id)
             output.write(Data("done\n".utf8))
         } catch {
             FileHandle.standardError.write(Data("Could not save the analysis: \(error.localizedDescription)\n".utf8))

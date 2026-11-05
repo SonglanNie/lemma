@@ -173,6 +173,7 @@ extension StudyStore {
         guard let book = library.first(where: { $0.id == id }),
               let loaded = app.libraryDocument(book) else { return nil }
         sideDocuments[id] = loaded
+        followAnalysis(of: book, in: loaded)
         return loaded
     }
 }

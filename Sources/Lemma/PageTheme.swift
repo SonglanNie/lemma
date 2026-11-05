@@ -29,7 +29,7 @@ final class PageThemeState: @unchecked Sendable {
 /// Pages of documents opened in the reader: they draw themselves in the current theme. The page is drawn into a
 /// bitmap the size of the tile PDFKit asks for, its pixels are recoloured, and the bitmap is drawn in its place:
 /// blend modes cannot be used because PDFKit paints the white paper separately from the page's content.
-final class ThemedPage: SelectionGuardedPage {
+final class ThemedPage: TextGuardedPage {
     override func draw(with box: PDFDisplayBox, to context: CGContext) {
         let theme = PageThemeState.shared.theme
         guard theme != .paper else { super.draw(with: box, to: context); return }
@@ -101,17 +101,21 @@ final class ThemedPage: SelectionGuardedPage {
 }
 
 /// Makes documents create `ThemedPage`s; set as the delegate before any page is read.
-final class ThemedPageProvider: NSObject, PDFDocumentDelegate, PageSelectionPolicy, @unchecked Sendable {
+final class ThemedPageProvider: NSObject, PDFDocumentDelegate, PageTextPolicy, @unchecked Sendable {
     static let shared = ThemedPageProvider()
+    override private init() {
+        super.init()
+        PageAccessibilityGuard.install()
+    }
     func classForPage() -> AnyClass { ThemedPage.self }
 
     /// What is known about one open document's pages.
     private final class Book {
         let id: String
-        var clearance: PageSelectionClearance
+        var clearance: PageTextClearance
         /// `PDFDocument.index(for:)` is asked once per page: drawing a page's marks makes many selections.
         var indexes: [ObjectIdentifier: Int] = [:]
-        init(id: String, clearance: PageSelectionClearance) { self.id = id; self.clearance = clearance }
+        init(id: String, clearance: PageTextClearance) { self.id = id; self.clearance = clearance }
     }
 
     private let lock = NSLock()
@@ -133,22 +137,27 @@ final class ThemedPageProvider: NSObject, PDFDocumentDelegate, PageSelectionPoli
     func stopRecordingPagesInUse() { lock.withLock { record }?.remove() }
 
     /// Selections on `document` follow `clearance` from now on. Call it before the document is shown.
-    func track(_ document: PDFDocument, book id: String, clearance: PageSelectionClearance) {
+    func track(_ document: PDFDocument, book id: String, clearance: PageTextClearance) {
         lock.withLock { books.setObject(Book(id: id, clearance: clearance), forKey: document) }
     }
 
-    func update(_ clearance: PageSelectionClearance, for document: PDFDocument) {
+    func update(_ clearance: PageTextClearance, for document: PDFDocument) {
         lock.withLock { books.object(forKey: document)?.clearance = clearance }
+    }
+
+    func admitsText(on page: PDFPage, in document: PDFDocument) -> Bool {
+        guard let book = lock.withLock({ books.object(forKey: document) }) else { return true }
+        let pageIndex = index(of: page, in: document, book: book)
+        return lock.withLock { book.clearance.admitsText(pageIndex) }
     }
 
     func admitsSelection(on page: PDFPage, in document: PDFDocument) -> Bool {
         guard let book = lock.withLock({ books.object(forKey: document) }) else { return true }
         let pageIndex = index(of: page, in: document, book: book)
-        return lock.withLock { book.clearance.admits(pageIndex) }
+        return lock.withLock { book.clearance.admitsSelection(pageIndex) }
     }
 
-    /// False while any page of `document` is refused: PDFKit's own text selection and search, which do not ask pages, must
-    /// then stay out. A document that is not tracked refuses nothing.
+    /// A document that is not tracked refuses nothing.
     func admitsEveryPage(in document: PDFDocument) -> Bool {
         lock.withLock { books.object(forKey: document)?.clearance.admitsEveryPage ?? true }
     }
@@ -164,6 +173,9 @@ final class ThemedPageProvider: NSObject, PDFDocumentDelegate, PageSelectionPoli
         guard let record = lock.withLock({ record }) else { work(); return }
         record.hold(during: work)
     }
+
+    /// Only a helper can do anything about a page whose text never returns: here a read was already cleared by the analysis.
+    func willReadText(on page: PDFPage, in document: PDFDocument) {}
 
     func willSelect(on page: PDFPage, in document: PDFDocument) {
         guard let (book, record) = lock.withLock({ () -> (Book, PageInUseRecord)? in

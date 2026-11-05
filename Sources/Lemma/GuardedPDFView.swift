@@ -4,7 +4,7 @@ import LemmaCore
 
 /// A PDF view whose text selection keeps to what the book's pages allow.
 ///
-/// PDFKit's own mouse tracking and Select All go straight to CoreGraphics, past `SelectionGuardedPage`, and drawing their
+/// PDFKit's own mouse tracking and Select All go straight to CoreGraphics, past `TextGuardedPage`, and drawing their
 /// selection can trap as well: a wide drag across a bad page ends Lemma. So in a book with a refused page, a drag, a double
 /// click and a triple click use the page's guarded selections instead. Such a selection stays on the page it began on, and
 /// Select All does nothing: PDFKit's selection would reach every page.
@@ -14,9 +14,8 @@ class GuardedPDFView: PDFView {
     override func mouseDown(with event: NSEvent) {
         let local = convert(event.locationInWindow, from: nil)
         guard let document, let page = page(for: local, nearest: true) else { super.mouseDown(with: event); return }
-        let provider = ThemedPageProvider.shared
-        guard !provider.admitsEveryPage(in: document) else {
-            provider.holdingPageInUse(page, in: document) { super.mouseDown(with: event) }
+        guard !document.admitsEveryPage else {
+            ThemedPageProvider.shared.holdingPageInUse(page, in: document) { super.mouseDown(with: event) }
             return
         }
         let point = convert(local, to: page)
@@ -44,7 +43,7 @@ class GuardedPDFView: PDFView {
     }
 
     override func selectAll(_ sender: Any?) {
-        guard let document, ThemedPageProvider.shared.admitsEveryPage(in: document) else { NSSound.beep(); return }
+        guard let document, document.admitsEveryPage else { NSSound.beep(); return }
         super.selectAll(sender)
     }
 }

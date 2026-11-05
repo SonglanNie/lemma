@@ -345,7 +345,7 @@ final class ReaderController {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         hasSearched = !query.isEmpty
         guard let document = view?.document, hasSearched else { return }
-        guard ThemedPageProvider.shared.admitsEveryPage(in: document) else {
+        guard document.admitsEveryPage else {
             let start = startPage ?? 0
             pendingFindStart = start
             findInPageTexts(query, in: document) { [weak self] in self?.goToFirstMatch(from: start, in: document) }

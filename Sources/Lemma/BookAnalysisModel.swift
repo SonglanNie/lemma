@@ -37,10 +37,12 @@ final class BookAnalysisModel {
     @ObservationIgnored private(set) var notation = NotationIndex([])
     /// Called on the main actor when an analysis is ready: read from its cache, or freshly made.
     @ObservationIgnored var onReady: (() -> Void)?
-    /// Which pages may be selected on, as far as this book's analysis has shown.
-    @ObservationIgnored private(set) var clearance: PageSelectionClearance
+    /// What the book's pages may do with their text, as far as its analysis has shown.
+    @ObservationIgnored private(set) var clearance: PageTextClearance
     /// Called on the main actor when `clearance` changes.
     @ObservationIgnored var onClearanceChange: (() -> Void)?
+    /// Called on the main actor with a page the analysis has just found unreadable.
+    @ObservationIgnored var onTextBlocked: ((Int) -> Void)?
     /// The saved analysis is being read (megabytes for a long book) off the main thread.
     private(set) var isLoadingCache = false
     @ObservationIgnored private var cacheTask: Task<Void, Never>?
@@ -53,11 +55,11 @@ final class BookAnalysisModel {
     /// a long book, which the window's first frame and switching tabs should not wait for. Until it arrives the book reads
     /// as not analysed yet; its decorations appear with `onReady`.
     ///
-    /// - Parameter waitsForAnalysis: whether pages wait for the analysis before they may be selected on. Only a helper can
+    /// - Parameter waitsForAnalysis: whether pages wait for the analysis before giving text or selections. Only a helper can
     ///   try a page safely: without one the analysis reads the book in this process, and waiting would protect nothing.
     init(workspaceID: String, repository: DocumentIndexRepository, waitsForAnalysis: Bool = BookAnalysisModel.helperURL != nil) {
         self.workspaceID = workspaceID; self.repository = repository
-        clearance = PageSelectionClearance(blocked: repository.selectionBlockedPages(workspaceID))
+        clearance = repository.pageTextClearance(workspaceID)
         if !waitsForAnalysis { clearance.readAllPages() }
         isLoadingCache = true
         let id = workspaceID
@@ -94,7 +96,7 @@ final class BookAnalysisModel {
             let handle = HelperHandle()
             helper = handle
             task = Task { [weak self] in
-                let reporter = ProgressRelay(onBlocked: { self?.block($0) }) { done, total in self?.report(done, total) }
+                let reporter = ProgressRelay(onBlocked: { self?.blockSelection($0) }, onTextBlocked: { self?.blockText($0) }) { done, total in self?.report(done, total) }
                 let outcome = await Self.runHelper(helperURL, source: url, id: id, root: repository.root, flag: flag, reporter: reporter, handle: handle)
                 guard let self, !flag.isCancelled else { return }
                 switch outcome {
@@ -143,13 +145,20 @@ final class BookAnalysisModel {
         onClearanceChange?()
     }
 
-    private func block(_ pageIndex: Int) {
-        clearance.block([pageIndex])
+    private func blockSelection(_ pageIndex: Int) {
+        clearance.blockSelection([pageIndex])
         onClearanceChange?()
     }
 
-    /// No analysis will say more about these pages, so waiting would only leave the book without selections. A bad page
-    /// not known yet can then crash Lemma, once: `PageInUseRecord` blocks it for the next launch.
+    private func blockText(_ pageIndex: Int) {
+        clearance.blockText([pageIndex])
+        onClearanceChange?()
+        onTextBlocked?(pageIndex)
+    }
+
+    /// No analysis will say more about these pages, so waiting would only leave the book without text. A page that traps and
+    /// is not known yet can then crash Lemma, once: `PageInUseRecord` blocks it for the next launch. Nothing yet stops the
+    /// reader on a page whose text never returns, which only an analysis finds.
     private func clearAllPages() {
         clearance.readAllPages()
         onClearanceChange?()
@@ -176,7 +185,8 @@ final class BookAnalysisModel {
                 for line in buffer.append(data) {
                     let parts = line.split(separator: " ")
                     if parts.count == 3, parts[0] == "progress", let done = Int(parts[1]), let total = Int(parts[2]) { reporter.report(done, total) }
-                    else if let page = PageSelectionRecovery.pageIndex(inBlockedReport: line) { reporter.reportBlocked(page) }
+                    else if let page = PageTextRecovery.pageIndex(inBlockedReport: line) { reporter.reportBlocked(page) }
+                    else if let page = PageTextRecovery.pageIndex(inTextBlockedReport: line) { reporter.reportTextBlocked(page) }
                 }
                 if flag.isCancelled, process.isRunning { process.terminate() }
             }
@@ -268,7 +278,8 @@ final class BookAnalysisModel {
         usesByKey = prepared.usesByKey
         usedByKey = prepared.usedByKey
         notation = prepared.notation
-        clearance.block(repository.selectionBlockedPages(workspaceID))
+        clearance.blockSelection(repository.selectionBlockedPages(workspaceID))
+        clearance.blockText(repository.textBlockedPages(workspaceID))
         clearAllPages()
     }
 
@@ -400,8 +411,10 @@ final class LineBuffer: @unchecked Sendable {
 final class ProgressRelay: @unchecked Sendable {
     private let update: @MainActor (Int, Int) -> Void
     private let blocked: @MainActor (Int) -> Void
-    init(onBlocked blocked: @escaping @MainActor (Int) -> Void = { _ in }, _ update: @escaping @MainActor (Int, Int) -> Void) {
-        self.update = update; self.blocked = blocked
+    private let textBlocked: @MainActor (Int) -> Void
+    init(onBlocked blocked: @escaping @MainActor (Int) -> Void = { _ in }, onTextBlocked textBlocked: @escaping @MainActor (Int) -> Void = { _ in },
+         _ update: @escaping @MainActor (Int, Int) -> Void) {
+        self.update = update; self.blocked = blocked; self.textBlocked = textBlocked
     }
     func report(_ done: Int, _ total: Int) {
         let update = update
@@ -410,5 +423,9 @@ final class ProgressRelay: @unchecked Sendable {
     func reportBlocked(_ pageIndex: Int) {
         let blocked = blocked
         Task { @MainActor in blocked(pageIndex) }
+    }
+    func reportTextBlocked(_ pageIndex: Int) {
+        let textBlocked = textBlocked
+        Task { @MainActor in textBlocked(pageIndex) }
     }
 }

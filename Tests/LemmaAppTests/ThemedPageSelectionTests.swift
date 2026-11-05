@@ -18,7 +18,7 @@ final class ThemedPageSelectionTests: XCTestCase {
 
     func testReaderPagesAreGuarded() throws {
         let document = try document()
-        XCTAssertTrue(document.page(at: 0) is SelectionGuardedPage)
+        XCTAssertTrue(document.page(at: 0) is TextGuardedPage)
     }
 
     func testADocumentThatIsNotTrackedRefusesNothing() throws {
@@ -32,7 +32,7 @@ final class ThemedPageSelectionTests: XCTestCase {
     func testPagesFollowTheirOwnDocumentsClearance() throws {
         let document = try document(), other = try self.document()
         let provider = ThemedPageProvider.shared
-        var clearance = PageSelectionClearance()
+        var clearance = PageTextClearance()
         clearance.read(pages: 1)
         provider.track(document, book: "book", clearance: clearance)
 
@@ -47,7 +47,7 @@ final class ThemedPageSelectionTests: XCTestCase {
         let document = try document()
         let provider = ThemedPageProvider.shared
         let page = try XCTUnwrap(document.page(at: 1))
-        var clearance = PageSelectionClearance()
+        var clearance = PageTextClearance()
         provider.track(document, book: "book", clearance: clearance)
         XCTAssertFalse(provider.admitsSelection(on: page, in: document))
 
@@ -56,11 +56,19 @@ final class ThemedPageSelectionTests: XCTestCase {
         XCTAssertTrue(provider.admitsSelection(on: page, in: document))
         XCTAssertTrue(provider.admitsEveryPage(in: document))
 
-        clearance.block([1])
+        clearance.blockSelection([1])
         provider.update(clearance, for: document)
         XCTAssertFalse(provider.admitsSelection(on: page, in: document))
         XCTAssertFalse(provider.admitsEveryPage(in: document))
         XCTAssertFalse(provider.isWaitingForPages(in: document), "A blocked page is not waiting for anything.")
+
+        clearance = PageTextClearance(textBlocked: [1])
+        clearance.readAllPages()
+        provider.update(clearance, for: document)
+        XCTAssertFalse(provider.admitsText(on: page, in: document))
+        XCTAssertFalse(provider.admitsSelection(on: page, in: document), "Selecting needs the text the page can't give.")
+        XCTAssertFalse(document.admitsEveryPage)
+        XCTAssertNil(page.string)
     }
 
     func testABookLeftUnanalysedStopsWaitingAndKeepsItsBlockedPages() throws {
@@ -69,15 +77,30 @@ final class ThemedPageSelectionTests: XCTestCase {
         let repository = DocumentIndexRepository(root: root)
         try repository.addSelectionBlockedPages([1], id: "book")
         let model = BookAnalysisModel(workspaceID: "book", repository: repository, waitsForAnalysis: true)
-        XCTAssertFalse(model.clearance.admits(0))
-        XCTAssertFalse(model.clearance.admits(1))
+        XCTAssertFalse(model.clearance.admitsSelection(0))
+        XCTAssertFalse(model.clearance.admitsSelection(1))
 
         var told = 0
         model.onClearanceChange = { told += 1 }
         model.skip("This PDF is protected by a password.")
         XCTAssertEqual(told, 1)
-        XCTAssertTrue(model.clearance.admits(0), "No analysis will come, and waiting would leave the book without selections.")
-        XCTAssertFalse(model.clearance.admits(1))
+        XCTAssertTrue(model.clearance.admitsSelection(0), "No analysis will come, and waiting would leave the book without selections.")
+        XCTAssertFalse(model.clearance.admitsSelection(1))
+    }
+
+    func testAPageWithUnreadableTextStaysRefusedWhateverHappensToTheAnalysis() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let repository = DocumentIndexRepository(root: root)
+        try repository.addTextBlockedPages([1], id: "book")
+        let model = BookAnalysisModel(workspaceID: "book", repository: repository, waitsForAnalysis: true)
+        XCTAssertFalse(model.clearance.admitsText(0), "An unread page's text may never return.")
+        XCTAssertFalse(model.clearance.admitsText(1))
+
+        model.skip("This PDF is protected by a password.")
+        XCTAssertTrue(model.clearance.admitsText(0))
+        XCTAssertFalse(model.clearance.admitsText(1))
+        XCTAssertFalse(model.clearance.admitsSelection(1))
     }
 
     func testWithoutAHelperNoPageWaits() throws {
@@ -86,7 +109,7 @@ final class ThemedPageSelectionTests: XCTestCase {
         let repository = DocumentIndexRepository(root: root)
         try repository.addSelectionBlockedPages([1], id: "book")
         let model = BookAnalysisModel(workspaceID: "book", repository: repository, waitsForAnalysis: false)
-        XCTAssertTrue(model.clearance.admits(0), "Only a helper can try a page safely: here waiting would protect nothing.")
-        XCTAssertFalse(model.clearance.admits(1), "A page known to be bad stays refused.")
+        XCTAssertTrue(model.clearance.admitsSelection(0), "Only a helper can try a page safely: here waiting would protect nothing.")
+        XCTAssertFalse(model.clearance.admitsSelection(1), "A page known to be bad stays refused.")
     }
 }
