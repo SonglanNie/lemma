@@ -211,7 +211,7 @@ extension StudyStore {
     }
 }
 
-final class SecondaryPDFView: PDFView {
+final class SecondaryPDFView: GuardedPDFView {
     var libraryDrop: PDFEditorDropHandler?
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         libraryDrop?.update(sender, in: self) ?? super.draggingEntered(sender)

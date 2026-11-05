@@ -204,8 +204,10 @@ final class FloatingBoxPanel: NSPanel, NSWindowDelegate {
 /// The page in a floating box: filled by the box at any window size, sharp since the page stays a PDF. The view shows
 /// its own copy of the page, cropped to the box, so nothing outside the box is there to scroll to: zoomed in (pinch,
 /// ⌘+), it scrolls within the box.
-final class FloatingBoxView: PDFView {
+final class FloatingBoxView: GuardedPDFView {
     private let page: PDFPage
+    /// The delegate of the copy's document, which holds it weakly.
+    private let pagePolicy: CopiedPagePolicy
     private let region: CGRect
     private(set) var zoom: CGFloat
     /// The point of the page kept in the middle of the view as the window is resized or the box zoomed.
@@ -219,6 +221,8 @@ final class FloatingBoxView: PDFView {
         guard let copy = source.copy() as? PDFPage else { return nil }
         copy.setBounds(box.region.rect, for: .cropBox)
         let document = PDFDocument()
+        pagePolicy = CopiedPagePolicy(copying: source)
+        document.delegate = pagePolicy
         document.insert(copy, at: 0)
         page = copy
         region = copy.bounds(for: .cropBox)

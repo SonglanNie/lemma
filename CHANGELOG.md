@@ -4,7 +4,14 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 
 ## Unreleased
 
+- Books with a page that crashes macOS's text selection now get their analysis, where before the whole book was left unanalysed, and Lemma no longer crashes on showing that page, including on reopening a book at it. The analysis runs again without the page, whose statements are then missing. Text can't be selected on the page and Find skips it; elsewhere in such a book a selection stays on one page and Select All is off.
+- While a book is first analysed, text selection, line numbers and the reading ruler wait until the analysis has reached the page, usually a second or so, and Find fills in its results when it finishes. Every book is analysed again once after this update.
+- If Lemma still stops on a page the analysis didn't catch, it says so as it closes and turns off text selection on that page, so the crash can't repeat.
 - Reading a book no longer crashes when a page's text ends with a label such as “Theorem 5.”, which stopped the whole analysis of that book.
+- On a few pages macOS's text extraction never finishes and took memory until the whole Mac slowed down. Reading such a page no longer does: analysing, indexing and searching a book stop at 6 GB of memory, set that page aside and carry on, so the book keeps its analysis, and Lemma says which page it was. The page still shows and the search index reads it by OCR, but nothing on it can be selected, and Find skips it.
+- While a book is first analysed, a page's references and Find results wait until the analysis has reached it, as selection does. A book opened beside the reader is now analysed too.
+- Right-clicking a page that crashes macOS's text selection no longer ends Lemma: the menu on such a page leaves out macOS's own items, such as Copy and the zoom commands.
+- A page whose text never finishes reading no longer takes the whole Mac's memory in a book without an analysis, such as a password-protected one. Lemma stops itself at 6 GB, says which page it was as it closes, and keeps that page's text out of use, so the book opens safely next time.
 
 ## 3.6.0 (November 2026)
 

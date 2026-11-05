@@ -526,6 +526,7 @@ final class StudyStore {
                     library.removeAll { $0.id == workspace.id }
                     library.insert(workspace, at: 0)
                     sideDocuments[workspace.id] = pdf
+                    followAnalysis(of: workspace, in: pdf)
                 }
                 openBookToTheSide(workspace.id)
             } else {
@@ -692,8 +693,22 @@ final class StudyStore {
         let model = analyses[workspace.id] ?? BookAnalysisModel(workspaceID: workspace.id, repository: indexRepository)
         analyses[workspace.id] = model
         index.analysis = model
+        // Selecting on a bad page ends Lemma, reading the text of another never returns, and the reader does both on the page in
+        // view as soon as it shows it: nothing may do so here until the analysis has read the page in its helper. A model kept
+        // from an earlier opening of the book knows its pages already, and its new document must hear of them now.
+        ThemedPageProvider.shared.track(pdf, book: workspace.id, title: workspace.title, clearance: model.clearance)
+        model.onClearanceChange = { [weak self, weak index, weak model, weak pdf] in
+            guard let model, let pdf else { return }
+            ThemedPageProvider.shared.update(model.clearance, for: pdf)
+            guard let self, self.document === pdf, self.reader.refreshClearedPages() else { return }
+            index?.invalidateMentions()
+            self.reader.updateViewport()
+            self.reader.view?.refreshCaptureOverlay()
+        }
+        model.onTextBlocked = { [weak self] page in self?.noteTextBlocked(page, title: workspace.title) }
         model.onReady = { [weak self, weak index, weak model] in
             index?.invalidateMentions()
+            if self?.analysis === model { self?.reader.findAgainInClearedPages() }
             self?.reader.view?.refreshCaptureOverlay()
             if self?.analysis === model { self?.refreshOutline() }
         }
@@ -1009,6 +1024,25 @@ final class StudyStore {
             openSpecial(.welcome)
         }
         if let message = error { error = nil; notify(message, severity: .error) }
+    }
+
+    /// A book shown beside the reader waits for its analysis as the main book does, which starts one if none is saved: a side
+    /// view reads the page in view too, and the first analysis of a book is what finds its bad pages.
+    func followAnalysis(of book: StudyWorkspace, in pdf: PDFDocument) {
+        let model = analyses[book.id] ?? BookAnalysisModel(workspaceID: book.id, repository: indexRepository)
+        analyses[book.id] = model
+        ThemedPageProvider.shared.track(pdf, book: book.id, title: book.title, clearance: model.clearance)
+        model.onClearanceChange = { [weak model, weak pdf] in
+            guard let model, let pdf else { return }
+            ThemedPageProvider.shared.update(model.clearance, for: pdf)
+        }
+        model.onTextBlocked = { [weak self] page in self?.noteTextBlocked(page, title: book.title) }
+        if lockedFingerprints.contains(book.fingerprint) { model.skip("This PDF is protected by a password, so Lemma does not read its structure.") }
+        else { model.start(url: URL(fileURLWithPath: book.sourcePath), outline: outlineCacheEntry(workspaceID: book.id, document: pdf).items) }
+    }
+
+    private func noteTextBlocked(_ pageIndex: Int, title: String) {
+        notify("macOS can't read the text of PDF page \(pageIndex + 1) of “\(title)”. The page still shows, but nothing on it can be selected or found.", severity: .warning, timeout: nil)
     }
 
     func capture() throws -> SourceAnchor {

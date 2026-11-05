@@ -439,6 +439,19 @@ extension StudyStore {
             let items: [[String: Any]] = menu.items.map { ["title": $0.title, "on": $0.state == .on, "action": $0.action.map(NSStringFromSelector) ?? ""] }
             let result: [String: Any] = ["items": items, "displayMode": view.displayMode.rawValue, "layout": workspace?.reading.layout?.rawValue ?? ""]
             try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted]).write(to: QAHooks.shared!.directory.appendingPathComponent("\(info["name"] ?? "page-menu").json"))
+        case "pageMenuSweep":
+            // The context menu asked for all over the page in view: a right click traps only at some points of a bad page.
+            guard let view = reader.view, let window = view.window, let page = view.currentPage else { throw QAHooks.QAError.missing("page") }
+            let box = page.bounds(for: .cropBox)
+            for column in 0..<20 {
+                for row in 0..<30 {
+                    let point = view.convert(CGPoint(x: box.minX + box.width * (CGFloat(column) + 0.5) / 20, y: box.minY + box.height * (CGFloat(row) + 0.5) / 30), from: page)
+                    guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: view.convert(point, to: nil), modifierFlags: [],
+                                                         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                                         context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+                    _ = view.menu(for: event)
+                }
+            }
         case "fitWidth": reader.fitWidth()
         case "appearance":
             NSApp.appearance = info["value"] == "light" ? NSAppearance(named: .aqua) : info["value"] == "dark" ? NSAppearance(named: .darkAqua) : nil
@@ -852,6 +865,16 @@ extension StudyStore {
             // A trackpad gesture at x, y (points from the window's top left); writes <name>.json (see QAWheel).
             guard let window = mainWindow, let directory = QAHooks.shared?.directory else { throw QAHooks.QAError.missing("window") }
             try await QAWheel.perform(window: window, info: info, output: directory.appendingPathComponent("\(info["name"] ?? "wheel").json"))
+        case "mouseSweep":
+            // Moves the pointer across the middle of the reader (mouse-moved events sent straight to the view, not the system).
+            guard let view = reader.view, let window = view.window else { throw QAHooks.QAError.missing("reader") }
+            for step in 0..<40 {
+                let point = view.convert(NSPoint(x: view.bounds.width * (0.1 + 0.02 * CGFloat(step)), y: view.bounds.height * (0.3 + 0.01 * CGFloat(step))), to: nil)
+                guard let event = NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) else { continue }
+                view.mouseMoved(with: event)
+                try await Task.sleep(for: .milliseconds(20))
+            }
         case "mouseThrough":
             // value=1 lets the reader's own pointer pass through the window (while a demo is recorded), value=0 restores it.
             mainWindow?.ignoresMouseEvents = info["value"] != "0"
