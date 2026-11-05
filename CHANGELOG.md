@@ -4,6 +4,8 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 
 ## Unreleased
 
+- Reading a book no longer crashes when a page's text ends with a label such as “Theorem 5.”, which stopped the whole analysis of that book.
+
 ## 3.6.0 (November 2026)
 
 - Annotate PDFs with the shared toolbox: pen, boxes, ellipses, lines, arrows and eraser; custom colors, widths, dashed outlines and translucent fills; move and resize shapes, Undo/Redo, and export a separate annotated PDF. Saved notes open in Preview, with Edit explicit.
