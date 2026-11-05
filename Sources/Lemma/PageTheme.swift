@@ -29,7 +29,7 @@ final class PageThemeState: @unchecked Sendable {
 /// Pages of documents opened in the reader: they draw themselves in the current theme. The page is drawn into a
 /// bitmap the size of the tile PDFKit asks for, its pixels are recoloured, and the bitmap is drawn in its place:
 /// blend modes cannot be used because PDFKit paints the white paper separately from the page's content.
-final class ThemedPage: PDFPage {
+final class ThemedPage: SelectionGuardedPage {
     override func draw(with box: PDFDisplayBox, to context: CGContext) {
         let theme = PageThemeState.shared.theme
         guard theme != .paper else { super.draw(with: box, to: context); return }
@@ -101,9 +101,86 @@ final class ThemedPage: PDFPage {
 }
 
 /// Makes documents create `ThemedPage`s; set as the delegate before any page is read.
-final class ThemedPageProvider: NSObject, PDFDocumentDelegate, @unchecked Sendable {
+final class ThemedPageProvider: NSObject, PDFDocumentDelegate, PageSelectionPolicy, @unchecked Sendable {
     static let shared = ThemedPageProvider()
     func classForPage() -> AnyClass { ThemedPage.self }
+
+    /// What is known about one open document's pages.
+    private final class Book {
+        let id: String
+        var clearance: PageSelectionClearance
+        /// `PDFDocument.index(for:)` is asked once per page: drawing a page's marks makes many selections.
+        var indexes: [ObjectIdentifier: Int] = [:]
+        init(id: String, clearance: PageSelectionClearance) { self.id = id; self.clearance = clearance }
+    }
+
+    private let lock = NSLock()
+    /// Held weakly: an entry ends with its document. PDFKit may ask from its own threads.
+    private let books = NSMapTable<PDFDocument, Book>.weakToStrongObjects()
+    private var record: PageInUseRecord?
+
+    /// Starts noting the page in use, and blocks the page the last run of Lemma died on, which is returned.
+    func recordPagesInUse(in repository: DocumentIndexRepository) -> PageInUseRecord.Entry? {
+        let crashed = PageInUseRecord.take(at: repository.pageInUseURL)
+        if let crashed { try? repository.addSelectionBlockedPages([crashed.pageIndex], id: crashed.book) }
+        let record = PageInUseRecord(url: repository.pageInUseURL)
+        record.markNoteOnTrap()
+        lock.withLock { self.record = record }
+        return crashed
+    }
+
+    /// Lemma is quitting normally: the page in use was not what ended it.
+    func stopRecordingPagesInUse() { lock.withLock { record }?.remove() }
+
+    /// Selections on `document` follow `clearance` from now on. Call it before the document is shown.
+    func track(_ document: PDFDocument, book id: String, clearance: PageSelectionClearance) {
+        lock.withLock { books.setObject(Book(id: id, clearance: clearance), forKey: document) }
+    }
+
+    func update(_ clearance: PageSelectionClearance, for document: PDFDocument) {
+        lock.withLock { books.object(forKey: document)?.clearance = clearance }
+    }
+
+    func admitsSelection(on page: PDFPage, in document: PDFDocument) -> Bool {
+        guard let book = lock.withLock({ books.object(forKey: document) }) else { return true }
+        let pageIndex = index(of: page, in: document, book: book)
+        return lock.withLock { book.clearance.admits(pageIndex) }
+    }
+
+    /// False while any page of `document` is refused: PDFKit's own text selection and search, which do not ask pages, must
+    /// then stay out. A document that is not tracked refuses nothing.
+    func admitsEveryPage(in document: PDFDocument) -> Bool {
+        lock.withLock { books.object(forKey: document)?.clearance.admitsEveryPage ?? true }
+    }
+
+    /// True while pages of `document` are refused only until its analysis reaches them.
+    func isWaitingForPages(in document: PDFDocument) -> Bool {
+        lock.withLock { books.object(forKey: document)?.clearance.isWaitingForPages ?? false }
+    }
+
+    /// Notes `page` as in use for as long as `work` runs, for PDFKit's own selections.
+    func holdingPageInUse(_ page: PDFPage, in document: PDFDocument, during work: () -> Void) {
+        willSelect(on: page, in: document)
+        guard let record = lock.withLock({ record }) else { work(); return }
+        record.hold(during: work)
+    }
+
+    func willSelect(on page: PDFPage, in document: PDFDocument) {
+        guard let (book, record) = lock.withLock({ () -> (Book, PageInUseRecord)? in
+            guard let book = books.object(forKey: document), let record else { return nil }
+            return (book, record)
+        }) else { return }
+        record.note(PageInUseRecord.Entry(book: book.id, pageIndex: index(of: page, in: document, book: book)))
+    }
+
+    /// PDFKit is asked outside the lock: it may be waiting for a thread that is here.
+    private func index(of page: PDFPage, in document: PDFDocument, book: Book) -> Int {
+        let key = ObjectIdentifier(page)
+        if let known = lock.withLock({ book.indexes[key] }) { return known }
+        let pageIndex = document.index(for: page)
+        lock.withLock { book.indexes[key] = pageIndex }
+        return pageIndex
+    }
 }
 
 extension NSColor {

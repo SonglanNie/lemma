@@ -18,7 +18,15 @@ struct LemmaIndexer {
                 FileHandle.standardError.write(Data("Expected --analyze PDF --workspace fingerprint --root support\n".utf8))
                 exit(2)
             }
-            analyze(source: URL(fileURLWithPath: source), id: id, root: URL(fileURLWithPath: root))
+            superviseAnalysis(source: source, id: id, root: root)
+        }
+        if let source = argument("--analyze-pages") {
+            guard let id = argument("--workspace"), let root = argument("--root"),
+                  let blocked = PageSelectionRecovery.pages(inArgument: argument("--blocked-pages") ?? "") else {
+                FileHandle.standardError.write(Data("Expected --analyze-pages PDF --workspace fingerprint --root support --blocked-pages 1,2\n".utf8))
+                exit(2)
+            }
+            analyze(source: URL(fileURLWithPath: source), id: id, root: URL(fileURLWithPath: root), blocked: blocked)
             return
         }
         // Library-wide search reads page texts here too: PDFKit's text extraction can take hundreds of megabytes for
@@ -73,13 +81,73 @@ struct LemmaIndexer {
     }
     nonisolated(unsafe) static var parentWatch: DispatchSourceProcess?
 
-    /// Writes `Indexes/<id>/analysis.json` and reports “progress <done> <total>” lines on standard output.
-    static func analyze(source: URL, id: String, root: URL) {
+    /// Analyses a book in a child process, relaying its progress. CoreGraphics traps on a few ordinary pages, which no
+    /// check can foresee (`PageSelectionGuard`): when the child traps, it runs again without selections on that page, so
+    /// the book loses that page's statements rather than its whole analysis. Each run starts over.
+    static func superviseAnalysis(source: String, id: String, root: String) -> Never {
+        func fail(_ message: String) -> Never {
+            FileHandle.standardError.write(Data((message + "\n").utf8))
+            exit(1)
+        }
+        guard let executable = Bundle.main.executableURL else { fail("The analysis could not start.") }
+        let repository = DocumentIndexRepository(root: URL(fileURLWithPath: root))
+        var recovery = PageSelectionRecovery()
+        while true {
+            let process = Process()
+            process.executableURL = executable
+            process.arguments = ["--analyze-pages", source, "--workspace", id, "--root", root,
+                                 "--blocked-pages", PageSelectionRecovery.argument(for: recovery.blocked)]
+            process.qualityOfService = .utility
+            let output = Pipe()
+            process.standardOutput = output
+            do { try process.run() } catch { fail(error.localizedDescription) }
+            let selecting = relayProgress(from: output.fileHandleForReading)
+            process.waitUntilExit()
+            guard process.terminationReason == .uncaughtSignal else {
+                // Kept only now: Swift's own runtime errors trap too, and a run that gives up has shown nothing about its pages.
+                if process.terminationStatus == 0 {
+                    do { try repository.addSelectionBlockedPages(recovery.blocked, id: id) } catch { fail(error.localizedDescription) }
+                }
+                exit(process.terminationStatus)
+            }
+            // A trap arrives as SIGTRAP on Apple silicon and as SIGILL on Intel.
+            guard [SIGTRAP, SIGILL].contains(process.terminationStatus), recovery.block(selecting), let selecting else {
+                fail("The book's structure could not be read: the analysis stopped on this PDF. Reading, notes and search still work.")
+            }
+            FileHandle.standardOutput.write(Data((PageSelectionRecovery.blockedReport(pageIndex: selecting) + "\n").utf8))
+            FileHandle.standardError.write(Data("Reading page index \(selecting) stopped the analysis; running it again without that page's layout.\n".utf8))
+        }
+    }
+
+    /// Passes the child's output on until it ends, keeping back the page markers. Returns the last page marked.
+    static func relayProgress(from pipe: FileHandle) -> Int? {
+        var selecting: Int?
+        var pending = Data()
+        while true {
+            let data = pipe.availableData
+            guard !data.isEmpty else { return selecting }
+            pending.append(data)
+            while let end = pending.firstIndex(of: UInt8(ascii: "\n")) {
+                let line = String(decoding: pending[pending.startIndex..<end], as: UTF8.self)
+                pending.removeSubrange(pending.startIndex...end)
+                if let page = PageSelectionRecovery.pageIndex(inMarker: line) { selecting = page }
+                else { FileHandle.standardOutput.write(Data((line + "\n").utf8)) }
+            }
+        }
+    }
+
+    /// Writes `Indexes/<id>/analysis.json`, and reports “progress <done> <total>” and page marker lines on standard output.
+    static func analyze(source: URL, id: String, root: URL, blocked: Set<Int>) {
         guard let document = PDFDocument(url: source) else {
             FileHandle.standardError.write(Data("Could not open the PDF.\n".utf8))
             exit(1)
         }
         let output = FileHandle.standardOutput
+        let selectionGuard = PageSelectionGuard(blocked: blocked) { page in
+            output.write(Data((PageSelectionRecovery.marker(pageIndex: page) + "\n").utf8))
+        }
+        selectionGuard.watch(document)
+        defer { withExtendedLifetime(selectionGuard) {} }
         let analysis = BookAnalyzer.analyze(document: document, outline: OutlineReader.items(in: document), progress: { done, total in
             output.write(Data("progress \(done) \(total)\n".utf8))
         })
