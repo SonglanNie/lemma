@@ -1,0 +1,61 @@
+% Fixture: proofs longer than three pages, citations wrapped to the start of a line, and end marks that sit far from
+% the text: after a short last line of a wide page, and alone on their row under a display. Compile with: tectonic long-proofs.tex
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[margin=0.9in]{geometry}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+\newcommand{\filler}{The argument continues by expanding each term and collecting the powers of the step size, which
+leaves a sum whose coefficients are bounded uniformly in the parameters. Every estimate below uses only the bound
+stated at the start of the proof, so the constants do not depend on the stiff part of the problem. Repeating this
+for the remaining terms gives the same conclusion, and the remainders are absorbed into the final constant.\par}
+\newcommand{\fillers}{\filler\filler\filler\filler\filler\filler\filler\filler}
+\begin{document}
+
+\section{Expansions}
+We work with a family of bounded operators and with a step size that is smaller than one throughout.
+
+\begin{lemma}\label{lem:bound}
+The resolvent is bounded by a constant that does not depend on the step size.
+\end{lemma}
+\begin{proof}
+This is the usual estimate, and it needs no assumption beyond the ones already stated.
+\end{proof}
+
+\begin{theorem}\label{thm:expansion}
+The error has an expansion in powers of the step size.
+\end{theorem}
+\begin{proof}
+\fillers\fillers
+We substitute the first expansion into the second one and bound the resolvent. The terms collect as before, and we use\linebreak
+Lemma~\ref{lem:bound}:
+\[ \|x\| \le C h. \]
+\fillers\fillers
+The remainder is of the size that the first estimate in this proof gives for $\|x\|, \|y\|, \|z\| \le C h$ by\linebreak
+Lemma~\ref{lem:bound}(a), and the constant stays the same as before.
+\fillers\fillers
+\fillers\fillers
+Collecting everything gives the expansion. This completes the induction on the order of the
+expansion.\linebreak
+All done.
+\end{proof}
+
+The expansion has a first consequence, which the next statement records for later use in the following
+\begin{remark}\label{rem:first}
+The constants above are uniform in the step size.
+\end{remark}
+
+\begin{proposition}\label{prop:display}
+The two errors agree to first order.
+\end{proposition}
+\begin{proof}
+Subtract the two expansions, which by the argument in Theorem~\ref{thm:expansion} leaves the difference
+\[ e_1 - e_2 = \mathcal{O}(h^2). \]
+\end{proof}
+
+The sentence after this proof does not belong to it, and it mentions Lemma~\ref{lem:bound}.
+
+\end{document}
