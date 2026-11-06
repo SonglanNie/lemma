@@ -12,6 +12,7 @@ The detailed notes written for each version before 3.0 are in [docs/HISTORY.md](
 - While a book is first analysed, a page's references and Find results wait until the analysis has reached it, as selection does. A book opened beside the reader is now analysed too.
 - Right-clicking a page that crashes macOS's text selection no longer ends Lemma: the menu on such a page leaves out macOS's own items, such as Copy and the zoom commands.
 - A page whose text never finishes reading no longer takes the whole Mac's memory in a book without an analysis, such as a password-protected one. Lemma stops itself at 6 GB, says which page it was as it closes, and keeps that page's text out of use, so the book opens safely next time.
+- Long proofs fold whole. A citation wrapped to the start of a line (“…and use⏎Lemma 1:”) no longer reads as a new statement, so it neither ends the proof around it nor adds a false entry to Results. The proof of a known statement now runs to its end mark on any later page rather than stopping after three, and amsthm's box is found after a short last line and alone under a display, while square markers in plots no longer end a proof. Books are read again once to pick this up.
 
 ## 3.5.0 (November 2026)
 

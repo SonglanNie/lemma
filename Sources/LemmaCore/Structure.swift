@@ -136,8 +136,17 @@ public enum StructureAnalyzer {
             }
             for match in endMark.matches(in: text, range: whole) { marks.append(TextPoint(pageIndex: pageIndex, location: match.range.upperBound)) }
         }
-        // Proof ends drawn as rules (amsthm's open box) rather than as a glyph.
-        let proofPages = Set(proofStarts.flatMap { [$0.point.pageIndex, $0.point.pageIndex + 1, $0.point.pageIndex + 2] })
+        proofStarts.sort { $0.point < $1.point }
+
+        let stops = (heads.map(\.point) + sectionStarts + outlineSections.map(\.point) + proofStarts.map(\.point)).sorted()
+        func nextStop(after point: TextPoint) -> TextPoint? { stops.first { $0 > point } }
+        let documentEnd = TextPoint(pageIndex: texts.count, location: 0)
+
+        // Proof ends drawn as rules (amsthm's open box) rather than as a glyph, on every page a proof can reach.
+        var proofPages = Set<Int>()
+        for start in proofStarts {
+            proofPages.formUnion(start.point.pageIndex...(nextStop(after: start.point) ?? documentEnd).pageIndex)
+        }
         for pageIndex in proofPages.sorted() where pageIndex < document.pageCount {
             guard let page = document.page(at: pageIndex) else { continue }
             for box in RuleMarks.endOfProofBoxes(on: page) {
@@ -145,18 +154,9 @@ public enum StructureAnalyzer {
             }
         }
         marks.sort()
-        proofStarts.sort { $0.point < $1.point }
-
-        let stops = (heads.map(\.point) + sectionStarts + outlineSections.map(\.point) + proofStarts.map(\.point)).sorted()
-        func nextStop(after point: TextPoint) -> TextPoint? { stops.first { $0 > point } }
 
         // Proofs: from the head to the first end mark, unless a statement, heading or another proof comes first.
         for (index, start) in proofStarts.enumerated() {
-            let limit = TextPoint(pageIndex: start.point.pageIndex + 3, location: 0)
-            let stop = nextStop(after: start.point).map { min($0, limit) } ?? limit
-            let mark = marks.first { $0 > start.point && $0 <= stop }
-            var end = mark ?? stop
-            if end.pageIndex >= texts.count { end = TextPoint(pageIndex: texts.count - 1, location: (texts.last as NSString?)?.length ?? 0) }
             // The statement proved: named, or the nearest provable statement before the proof (within two pages).
             var statement = start.named
             if statement == nil, let previous = heads.last(where: { $0.point < start.point }),
@@ -164,6 +164,13 @@ public enum StructureAnalyzer {
                previous.target.key.kind == .theorem, provedNames.contains(previous.target.key.name ?? "") {
                 statement = previous.target.key
             }
+            // A proof of a known statement runs to its mark however far that is. Otherwise “Proof” may be a word in a running
+            // text with no end to find, and three pages bound it; a proof with no mark in reach also ends there.
+            let stop = nextStop(after: start.point) ?? documentEnd
+            let limit = min(stop, TextPoint(pageIndex: start.point.pageIndex + 3, location: 0))
+            let mark = marks.first { $0 > start.point && $0 <= (statement == nil ? limit : stop) }
+            var end = mark ?? limit
+            if end.pageIndex >= texts.count { end = TextPoint(pageIndex: texts.count - 1, location: (texts.last as NSString?)?.length ?? 0) }
             let (regions, lines) = self.regions(from: start.point, to: end, in: document, texts: texts)
             structure.proofs.append(ProofBlock(id: index, statement: statement, start: start.point, end: end, endsWithMark: mark != nil,
                                                regions: regions, lineCount: lines))
@@ -277,19 +284,23 @@ public enum StructureAnalyzer {
     }
 
     /// The text offset of the last character of the line that a mark ends (amsthm pushes the box to the right margin).
+    /// A mark alone on its row ends the display above it, whose pieces PDFKit may read out of order: the last of them.
     static func characterBefore(_ box: CGRect, on page: PDFPage) -> Int? {
         let map = PageTextMap(page: page)
         let line = map.lines.filter { line in
             let overlap = min(line.rect.maxY, box.maxY) - max(line.rect.minY, box.minY)
             return overlap > box.height * 0.3 && line.rect.minX < box.minX
         }.max { $0.rect.maxX < $1.rect.maxX }
-        return line.map { $0.range.upperBound - 1 }
+        if let line { return line.range.upperBound - 1 }
+        return map.lines.filter { RuleMarks.isJustAbove($0.rect, box) }.map { $0.range.upperBound - 1 }.max()
     }
 }
 
 /// End-of-proof squares drawn with rules: amsthm's open box is four thin rules, a black box one filled square.
 public enum RuleMarks {
-    /// Squares of 4–10 pt at the right of a text line, built from filled rectangles in the page's content stream.
+    /// Squares of 4–10 pt ending a text line, however short the line when they sit at the column's right edge, or alone
+    /// on their row at that edge under a line of text (a proof closing with a display), built from filled rectangles in
+    /// the page's content stream.
     public static func endOfProofBoxes(on page: PDFPage) -> [CGRect] {
         guard let cgPage = page.pageRef else { return [] }
         let rules = RuleScanContext.rules(on: cgPage)
@@ -310,14 +321,24 @@ public enum RuleMarks {
                 boxes.append(union); used.formUnion(near)
             }
         }
-        // A plot's square markers are not proof ends: keep squares at the right end of a line of text.
+        // A plot's square markers are not proof ends: they stand among its other rules, where an end mark has at most a
+        // few fraction bars near it.
         let fragments = PageReferenceAnalyzer.fragments(on: page)
+        let pageBox = page.bounds(for: .cropBox)
         return boxes.filter { box in
-            fragments.contains { fragment in
-                let overlap = min(fragment.bounds.maxY, box.maxY) - max(fragment.bounds.minY, box.minY)
-                return overlap > box.height * 0.3 && fragment.bounds.maxX <= box.minX + 2 && box.minX - fragment.bounds.maxX < 380
-            }
+            guard rules.filter({ !$0.intersects(box.insetBy(dx: -1, dy: -1)) && $0.intersects(box.insetBy(dx: -24, dy: -24)) }).count < 6 else { return false }
+            let column = ReferenceLayout.column(containing: box.midX, near: box.midY, fragments: fragments, page: pageBox)
+            // A short page's lines can all stop before the margin the box is pushed to.
+            let flush = box.maxX >= column.upperBound - 3
+            let row = fragments.filter { min($0.bounds.maxY, box.maxY) - max($0.bounds.minY, box.minY) > box.height * 0.3 }
+            if row.isEmpty { return flush && fragments.contains { isJustAbove($0.bounds, box) } }
+            return row.contains { $0.bounds.maxX <= box.minX + 2 && (flush || box.minX - $0.bounds.maxX < 380) }
         }
+    }
+
+    /// Whether `line` ends within 40 pt above `box`, in the box's column or one to its left.
+    static func isJustAbove(_ line: CGRect, _ box: CGRect) -> Bool {
+        line.minY >= box.midY && line.minY - box.maxY <= 40 && line.minX < box.maxX
     }
 }
 
