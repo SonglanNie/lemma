@@ -238,8 +238,28 @@ public struct ReferenceTarget: Codable, Equatable, Sendable {
     /// Read from a number opening a line (“2.35 definition:”, “1.26 unique additive identity”): kept only in books that
     /// number every item that way, since elsewhere such a line is a section heading (“10.8 Example: Spam Data”).
     public var numberFirst: Bool?
+    /// How far text reaches, left and right, level with the label.
+    public var lineExtent: ClosedRange<CGFloat>?
     public init(key: ReferenceKey, pageIndex: Int, anchor: PageRegion, region: PageRegion, origin: Origin, location: Int? = nil) {
         self.key = key; self.pageIndex = pageIndex; self.anchor = anchor; self.region = region; self.origin = origin; self.location = location
+    }
+
+    /// Where a tag of `size` goes: in the margin level with the label, clear of the text on the label's line, on the
+    /// side nearer the label's column. Nil when neither margin of `page` has room, since a tag must not cover the text.
+    public func tagFrame(size: CGSize, toView: CGAffineTransform, page: CGRect) -> CGRect? {
+        let label = anchor.rect.applying(toView)
+        let extent = lineExtent ?? min(anchor.rect.minX, region.rect.minX)...max(anchor.rect.maxX, region.rect.maxX)
+        let line = CGRect(x: extent.lowerBound, y: anchor.rect.minY, width: extent.upperBound - extent.lowerBound, height: anchor.rect.height).applying(toView)
+        let item = region.rect.applying(toView)
+        // Clear of the whole item if the page has the room, so tags line up; otherwise clear of the text alone.
+        let rights = [max(line.maxX, item.maxX) + 6, line.maxX + 6]
+        let lefts = [min(line.minX, item.minX) - 6 - size.width, line.minX - 6 - size.width]
+        // A label in the left column of two would otherwise get its tag beyond the right column.
+        let inLeftColumn = max(label.maxX, item.maxX) < page.midX
+        let (first, second) = inLeftColumn ? (lefts, rights) : (rights, lefts)
+        return [first[0], second[0], first[1], second[1]]
+            .first { $0 >= page.minX + 2 && $0 + size.width <= page.maxX - 2 }
+            .map { CGRect(x: $0, y: label.midY - size.height / 2, width: size.width, height: size.height) }
     }
 }
 
@@ -281,6 +301,14 @@ public enum ReferenceLayout {
             location = match.range(at: 1).upperBound
         }
         return false
+    }
+
+    /// How far text reaches beside `rect`, `rect` included, over the height of a tag level with it. A short line among
+    /// longer ones reaches as far as they do, or a tag after it would sit on them.
+    static func lineExtent(of rect: CGRect, fragments: [LayoutFragment]) -> ClosedRange<CGFloat> {
+        let band = (rect.midY - 7)...(rect.midY + 7)
+        let beside = fragments.map(\.bounds).filter { min($0.maxY, band.upperBound) - max($0.minY, band.lowerBound) > 1 }
+        return min(rect.minX, beside.map(\.minX).min() ?? rect.minX)...max(rect.maxX, beside.map(\.maxX).max() ?? rect.maxX)
     }
 
     /// Body text starts at the column's left edge (allowing a paragraph indent); displays are inset.

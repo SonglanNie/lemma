@@ -458,21 +458,10 @@ final class RegionSelectionOverlay: NSView {
             let lens = reused(key) {
                 ReferenceLensView(key: target.key, references: count, notes: notes, fontSize: fontSize) { [weak controller] key in controller?.onShowReferences?(key) }
             }
-            let anchor = target.anchor.rect.applying(toView)
-            let size = lens.intrinsicContentSize
-            var frame: CGRect
-            switch target.key.kind {
-            case .equation:
-                frame = CGRect(x: anchor.maxX + 5, y: anchor.midY - size.height / 2, width: size.width, height: size.height)
-                if frame.maxX > pageRect.maxX - 2 { frame.origin = CGPoint(x: anchor.maxX - size.width, y: anchor.minY - size.height) }
-            case .theorem, .exercise, .algorithm:
-                // In the right margin, level with the label's line: above the label it sat in the gap between lines,
-                // over the descenders of the line before.
-                let statement = target.region.rect.applying(toView)
-                frame = CGRect(x: statement.maxX + 6, y: anchor.midY - size.height / 2, width: size.width, height: size.height)
-                if frame.maxX > pageRect.maxX - 2 { frame = CGRect(x: anchor.minX, y: anchor.maxY + 1, width: size.width, height: size.height) }
-            default:
-                frame = CGRect(x: anchor.minX, y: anchor.maxY + 1, width: size.width, height: size.height)
+            // No room in either margin: the count stays in the hover preview.
+            guard let frame = target.tagFrame(size: lens.intrinsicContentSize, toView: toView, page: pageRect) else {
+                lens.removeFromSuperview()
+                continue
             }
             lens.frame = frame
             marks.place(lens, in: self, as: key)

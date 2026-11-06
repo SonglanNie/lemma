@@ -1207,8 +1207,8 @@ final class RegionPDFView: GuardedPDFView {
 }
 
 
-/// “4 refs · 1 note” beside an equation label, in the margin beside a statement, or above a caption. Clicking lists the
-/// references in the panel. It sits on a paper-coloured backing, so it stays legible wherever the layout puts it.
+/// “4 refs · 1 note” in the margin, level with the label of an equation, statement or caption. Clicking lists the
+/// references in the panel.
 @MainActor final class ReferenceLensView: NSView {
     static let kinds: Set<ReferenceKind> = [.equation, .figure, .table, .algorithm, .theorem, .exercise]
     let key: ReferenceKey
