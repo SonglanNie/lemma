@@ -38,7 +38,7 @@ public struct CitationRecord: Codable, Equatable, Sendable {
 /// defined and cited, the back-of-book index and the reference list. Stored per document beside its search index.
 public struct BookAnalysis: Codable, Sendable {
     /// Bump when the analysis changes, so books are read again.
-    public static let currentVersion = 9
+    public static let currentVersion = 10
     public var version = BookAnalysis.currentVersion
     public var pageCount: Int
     public var numbering: PageNumbering?
@@ -198,6 +198,7 @@ public enum BookAnalyzer {
             listedExercises.formUnion(listed.map(\.key))
             listedExerciseIDs.formUnion(listed.map { "\($0.pageIndex):\($0.location ?? -1)" })
             definitions += listed
+            for index in definitions.indices { definitions[index].lineExtent = ReferenceLayout.lineExtent(of: definitions[index].anchor.rect, fragments: lines) }
             definitionsByPage.append(definitions)
             if outline.isEmpty, !text.isEmpty { headingCandidates += headings(in: text, page: page, pageIndex: pageIndex, runs: runs, fragments: lines) }
             if !text.isEmpty { symbolDefinitions += Notation.definitions(in: text, pageIndex: pageIndex) }

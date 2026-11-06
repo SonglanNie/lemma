@@ -70,6 +70,55 @@ final class GeneralityTests: XCTestCase {
         XCTAssertFalse(structure.uses(proposition).contains { $0.to == lemma }, "The sentence after the box is not part of the proof.")
     }
 
+    func testCitationsOpeningALineAreNotLabels() throws {
+        let analysis = try analyze("line-start-citations")
+        let equations = analysis.definitions.filter { $0.key.kind == .equation }
+        XCTAssertEqual(equations.map(\.key.number).sorted(), ["1a", "1b", "1c"], "“(1b) for ∆g we have” and “(1a), so y = Y” open a line of prose.")
+        XCTAssertEqual(Set(equations.map(\.pageIndex)), [0])
+    }
+
+    func testWhatFollowsALabelCarriesOnASentenceOrNot() {
+        for text in ["for ∆g we have", ", so y = 1", "and (2.57)", ".", ". Then", ": 1924–1937"] {
+            XCTAssertTrue(PageReferenceAnalyzer.continuesSentence(text), text)
+        }
+        for text in ["a(u, v) = (f, v)", "a= b", ".Xj;Xk/D", ".2 / 1", "y(t) =", ""] {
+            XCTAssertFalse(PageReferenceAnalyzer.continuesSentence(text), text)
+        }
+    }
+
+    func testTagsClearTheTextBesideTheirLabels() throws {
+        for name in ["line-start-citations", "leqno-alpha", "book-chapters"] {
+            let document = try XCTUnwrap(PDFDocument(url: try fixture(name)))
+            let analysis = try XCTUnwrap(BookAnalyzer.analyze(document: document, outline: OutlineReader.items(in: document)))
+            for target in analysis.definitions where target.origin == .text {
+                let page = try XCTUnwrap(document.page(at: target.pageIndex))
+                let box = page.bounds(for: .cropBox)
+                guard let frame = target.tagFrame(size: CGSize(width: 34, height: 12), toView: .identity, page: box) else { continue }
+                let covered = PageReferenceAnalyzer.fragments(on: page).filter { $0.bounds.intersects(frame.insetBy(dx: 1, dy: 2)) }
+                XCTAssertEqual(covered.map(\.text), [], "\(name): the tag of \(target.key.title)")
+            }
+        }
+    }
+
+    func testATagTakesTheMarginWithRoomOrNone() {
+        let page = CGRect(x: 0, y: 0, width: 600, height: 800)
+        let size = CGSize(width: 40, height: 12)
+        func target(label: CGRect, region: CGRect, line: ClosedRange<CGFloat>) -> ReferenceTarget {
+            var target = ReferenceTarget(key: ReferenceKey(kind: .equation, number: "1"), pageIndex: 0, anchor: PageRegion(label), region: PageRegion(region), origin: .text)
+            target.lineExtent = line
+            return target
+        }
+        let label = CGRect(x: 500, y: 400, width: 20, height: 10)
+        let wide = CGRect(x: 70, y: 395, width: 450, height: 20)
+        XCTAssertEqual(target(label: label, region: wide, line: 70...520).tagFrame(size: size, toView: .identity, page: page)?.minX, 526)
+        XCTAssertEqual(target(label: label, region: wide, line: 70...570).tagFrame(size: size, toView: .identity, page: page)?.maxX, 64, "No room on the right.")
+        XCTAssertNil(target(label: label, region: wide, line: 30...570).tagFrame(size: size, toView: .identity, page: page), "A tag never covers the text.")
+        let inLeftColumn = CGRect(x: 240, y: 400, width: 20, height: 10)
+        let column = CGRect(x: 70, y: 395, width: 190, height: 20)
+        XCTAssertEqual(target(label: inLeftColumn, region: column, line: 70...530).tagFrame(size: size, toView: .identity, page: page)?.maxX, 64,
+                       "A label in the left column keeps its tag on that side.")
+    }
+
     func testALabelClosingThePageHasNoTitle() {
         let box = PageRegion(CGRect(x: 0, y: 0, width: 10, height: 10))
         let target = ReferenceTarget(key: ReferenceKey(kind: .theorem, number: "5", name: "Theorem"), pageIndex: 0, anchor: box, region: box,

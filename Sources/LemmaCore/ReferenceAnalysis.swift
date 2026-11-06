@@ -155,6 +155,9 @@ public enum PageReferenceAnalyzer {
     }
     /// Words a sentence cannot end on, so a line stopping at one runs on. A paragraph can end without a full stop before a
     /// head (“Now we can prove⏎Theorem 14.15”), which is why a lower-case word alone says nothing.
+    /// Words that follow a cited equation, beyond those that leave a sentence unfinished.
+    static let sentenceWords: Set<String> = ["are", "becomes", "but", "gives", "give", "has", "have", "hold", "holds", "if", "implies", "imply", "is",
+                                             "reads", "shows", "show", "since", "so", "then", "was", "we", "were", "when", "where", "which", "yields", "yield"]
     static let unfinishedSentenceEndings: Set<String> = ["a", "after", "an", "and", "apply", "applying", "as", "at", "before", "between", "by", "cf", "for", "from",
                                                          "in", "into", "of", "on", "or", "see", "than", "that", "the", "to", "under", "use", "using", "via", "with"]
     /// Glyphs some books set before an exercise or statement head: a solution mark, a difficulty star, a bullet.
@@ -480,6 +483,17 @@ public enum PageReferenceAnalyzer {
         return found.values.sorted { $0.anchor.y > $1.anchor.y }
     }
 
+    /// Whether the text after a label carries on a sentence, as a formula beside its label does not.
+    static func continuesSentence(_ text: String) -> Bool {
+        guard let first = text.first else { return false }
+        // Some fonts give “(” as “.” in the text layer: “(15.9) .Xj;Xk/D”.
+        if first == "." { return text.dropFirst().first?.isWhitespace != false }
+        if ",;:".contains(first) { return true }
+        let word = text.prefix { $0.isLetter }
+        guard text.dropFirst(word.count).first?.isWhitespace != false else { return false }
+        return sentenceWords.contains(String(word)) || unfinishedSentenceEndings.contains(String(word))
+    }
+
     /// Whether a parenthesized number at `label` is a displayed equation's own label: it ends its line flush with
     /// the column's right edge, apart from the formula, or starts a formula's line at the column's left edge.
     static func isEquationLabel(_ mention: ReferenceMention, label: CGRect, string: NSString, page: PDFPage, fragments: [LayoutFragment],
@@ -491,7 +505,13 @@ public enum PageReferenceAnalyzer {
         let column = ReferenceLayout.column(containing: label.midX, near: label.midY, fragments: fragments, page: box)
         let previous = previousIndex(mention.range.location)
         // Left labels (“leqno”): first on their line, at the column's left edge, with a formula · not prose · beside them.
-        if previous == nil, label.minX <= column.lowerBound + 3, !ReferenceLayout.isProse(rest) {
+        // Short prose full of mathematics is still a sentence: “(16c) for ∆g we have”, “(2b), so y = 1”. It follows at a word
+        // space, where a formula beginning with the same characters (“(41) a(u, v) =”) stands apart.
+        var nextCharacter = mention.range.upperBound
+        while nextCharacter < string.length, CharacterSet.whitespaces.contains(UnicodeScalar(string.character(at: nextCharacter)) ?? "x") { nextCharacter += 1 }
+        let next = nextCharacter < string.length ? PageTextMap.bounds(of: nextCharacter, on: page) : nil
+        let followsAtWordSpace = next.map { abs($0.midY - label.midY) < label.height && $0.minX - label.maxX < 12 } ?? false
+        if previous == nil, label.minX <= column.lowerBound + 3, !ReferenceLayout.isProse(rest), !(followsAtWordSpace && continuesSentence(rest)) {
             let beside = fragments.filter { fragment in
                 let overlap = min(fragment.bounds.maxY, label.maxY) - max(fragment.bounds.minY, label.minY)
                 return overlap > 0.4 * min(label.height, fragment.bounds.height) && fragment.bounds.minX > label.maxX + 3
@@ -591,7 +611,7 @@ extension ReferenceLayout {
 
 /// Persisted reference scanning, so a book is analysed once. Bump `currentVersion` when heuristics change.
 public struct ReferenceCache: Codable, Sendable {
-    public static let currentVersion = 4
+    public static let currentVersion = 5
     public var version = ReferenceCache.currentVersion
     public var scannedPages: Set<Int> = []
     public var targets: [ReferenceTarget] = []
