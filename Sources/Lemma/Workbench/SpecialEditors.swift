@@ -239,6 +239,15 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.5.0-fork.2: clearer pages", "references", [
+            "The reference counts beside equations, statements and captions sit in the page margin, level with their label, so they no longer cover the text. A page with no room in either margin shows no count, and hovering the label still gives it.",
+            "Long proofs fold whole, to their end mark on any later page. A citation wrapped to the start of a line no longer reads as a new statement or as an equation's label.",
+        ]),
+        ("Lemma 3.5.0-fork.2: pages macOS can't read", "warning", [
+            "A book with a page that crashes macOS's text selection now gets its analysis, and Lemma no longer crashes on showing or right-clicking that page. Text can't be selected there and Find skips it.",
+            "A page whose text never finishes reading no longer takes the Mac's memory: Lemma stops at 6 GB, sets the page aside and carries on. In a book with no analysis, such as a password-protected one, Lemma closes instead.",
+            "If Lemma stops on a page, it says which one as it closes, and the book opens safely next time.",
+        ]),
         ("Lemma 3.5.0-fork.1: turn the page", "arrow-right", [
             "← and → turn the page, as in PDFgear, at any zoom, in the main editor and the side editor: the next page's top comes to the top of the window, and two pages turn at a time in a two-page layout. They used to do nothing on a slide that fit the window.",
             "An opened book takes the keyboard when nothing else has it, so the arrows work without a click on the page first."
