@@ -4,7 +4,7 @@ import PDFKit
 
 /// The book analysis on documents typeset differently from ESL: LaTeX articles with undotted equation numbers and
 /// numeric citations, a book with chapters, an index and author–year citations, and an amsart paper with equation
-/// numbers on the left and alphabetic citation keys. The fixtures are compiled from the `.tex` files beside them.
+/// numbers on the left and alphabetic citation keys, and an article whose proofs run for pages. The fixtures are compiled from the `.tex` files beside them.
 final class GeneralityTests: XCTestCase {
     private func fixture(_ name: String) throws -> URL {
         try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "pdf", subdirectory: "Fixtures"), "Missing fixture \(name).pdf")
@@ -44,6 +44,30 @@ final class GeneralityTests: XCTestCase {
         XCTAssertTrue(uses.contains(ReferenceKey(kind: .theorem, number: "1", name: "Lemma")), "The proof of Theorem 2 uses Lemma 1: \(uses)")
         XCTAssertFalse(uses.contains(ReferenceKey(kind: .figure, number: "1")), "The sentence after the proof's end mark is not part of the proof.")
         XCTAssertEqual(analysis.headings.map(\.title), ["1 Introduction", "2 Ridge regression"], "A PDF without an outline gets one from its bold numbered headings.")
+    }
+
+    func testLongProofsRunToTheirEndMarks() throws {
+        let analysis = try analyze("long-proofs")
+        let structure = analysis.structure
+        let lemma = ReferenceKey(kind: .theorem, number: "1", name: "Lemma")
+        let theorem = ReferenceKey(kind: .theorem, number: "2", name: "Theorem")
+        let proposition = ReferenceKey(kind: .theorem, number: "3", name: "Proposition")
+
+        XCTAssertEqual(structure.statements.map(\.key.title), ["Lemma 1", "Theorem 2", "Remark 1", "Proposition 3"],
+                       "“…and we use⏎Lemma 1:” and “…by⏎Lemma 1(a), and” are citations, and a remark's head after an unfinished line is still a head.")
+        XCTAssertEqual(structure.proofs.map(\.statement), [lemma, theorem, proposition])
+        XCTAssertTrue(structure.proofs.allSatisfy(\.endsWithMark))
+
+        let long = try XCTUnwrap(structure.proof(of: theorem))
+        XCTAssertEqual(long.start.pageIndex, 0)
+        XCTAssertEqual(long.end.pageIndex, 6, "The mark ends the proof seven pages on, after a last line far to its left.")
+        XCTAssertEqual(Set(long.regions.map(\.pageIndex)), Set(0...6), "Every page of the proof is folded.")
+
+        let document = try XCTUnwrap(PDFDocument(url: try fixture("long-proofs")))
+        let display = try XCTUnwrap(structure.proof(of: proposition))
+        let text = try XCTUnwrap(document.page(at: display.end.pageIndex)?.string) as NSString
+        XCTAssertTrue(text.substring(to: display.end.location).hasSuffix("O(h2)."), "A box alone under a display ends the proof at the display.")
+        XCTAssertFalse(structure.uses(proposition).contains { $0.to == lemma }, "The sentence after the box is not part of the proof.")
     }
 
     func testALabelClosingThePageHasNoTitle() {

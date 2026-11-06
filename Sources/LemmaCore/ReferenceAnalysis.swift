@@ -153,6 +153,10 @@ public enum PageReferenceAnalyzer {
         guard start > 0 else { return nil }
         return string.substring(with: string.lineRange(for: NSRange(location: start - 1, length: 0))).trimmingCharacters(in: .newlines)
     }
+    /// Words a sentence cannot end on, so a line stopping at one runs on. A paragraph can end without a full stop before a
+    /// head (“Now we can prove⏎Theorem 14.15”), which is why a lower-case word alone says nothing.
+    static let unfinishedSentenceEndings: Set<String> = ["a", "after", "an", "and", "apply", "applying", "as", "at", "before", "between", "by", "cf", "for", "from",
+                                                         "in", "into", "of", "on", "or", "see", "than", "that", "the", "to", "under", "use", "using", "via", "with"]
     /// Glyphs some books set before an exercise or statement head: a solution mark, a difficulty star, a bullet.
     static let leadingMarks: Set<Character> = ["◃", "▹", "▷", "◁", "⊳", "⊲", "▸", "►", "▶", "★", "☆", "✩", "✱", "∗", "*", "⋆", "•", "†", "‡", "♦", "◦"]
 
@@ -343,6 +347,16 @@ public enum PageReferenceAnalyzer {
             guard let bounds = page.selection(for: range)?.bounds(for: page), !bounds.isEmpty, !bounds.isNull, LayoutFragment.isSane(bounds) else { return nil }
             return bounds
         }
+        /// Whether a label opening a line carries on the sentence above it (“…and use⏎Lemma 1:”, “…as in⏎Theorem 3 (in
+        /// particular…”): the line above has no room left for the label and stops where no sentence can. The page's geometry
+        /// and its text must agree on that line: PDFKit can report lines far taller than they are, and read them out of order.
+        func continuesSentence(_ location: Int, label: CGRect) -> Bool {
+            guard let above = ReferenceLayout.lineRunningInto(label, fragments: fragments(), page: box),
+                  let previous = Self.previousLine(before: location, in: string),
+                  let word = above.split(whereSeparator: \.isWhitespace).last, word == previous.split(whereSeparator: \.isWhitespace).last,
+                  let last = word.last else { return false }
+            return last == "," || (last.isLowercase && Self.unfinishedSentenceEndings.contains(word.drop { !$0.isLetter }.lowercased()))
+        }
         let bold = (options.emphasis ?? []).filter { $0.style == .bold }
         let boldRuns = bold.map(\.range)
         let pageHasBold = !boldRuns.isEmpty
@@ -404,6 +418,8 @@ public enum PageReferenceAnalyzer {
                 default:
                     if capitalized || bold {
                         guard following.map({ $0.isNewline || ".:(".contains($0) || $0.isUppercase }) ?? true else { continue }
+                        // A citation can wrap to the start of a line and look like a head. A bold label or one in capitals is never one.
+                        if !bold, !mention.text.prefix(3).allSatisfy(\.isUppercase), continuesSentence(mention.range.location, label: label) { continue }
                     } else {
                         // Small capitals print “lemma 16.2”; a lower-case head elsewhere is a sentence continuing from the line
                         // above · unless space sets it apart from that line (“definition 10.1 (γ-Weak-Learnability)”, or a head
@@ -560,11 +576,22 @@ extension ReferenceLayout {
         let above = rows[index - 1]
         return above.minY - rows[index].maxY >= 6 || !isBodyText(above, column: column)
     }
+
+    /// The end of the line that the line at `rect` runs on from, if any: the one above it at line spacing, too full for
+    /// `rect` to fit at its end. Read from fragments, since `rows` joins two lines when tall formulas make them overlap.
+    static func lineRunningInto(_ rect: CGRect, fragments: [LayoutFragment], page: CGRect) -> String? {
+        let column = column(containing: rect.midX, near: rect.midY, fragments: fragments, page: page, margins: true)
+        let above = fragments.filter { column.contains($0.bounds.midX) && $0.bounds.midY > rect.midY + rect.height * 0.4 && !isRotated($0) }
+        guard let nearest = above.min(by: { $0.bounds.midY < $1.bounds.midY }), nearest.bounds.minY - rect.maxY < 6,
+              let end = above.filter({ abs($0.bounds.midY - nearest.bounds.midY) < nearest.bounds.height / 2 }).max(by: { $0.bounds.maxX < $1.bounds.maxX }),
+              end.bounds.maxX + rect.width > column.upperBound else { return nil }
+        return end.text
+    }
 }
 
 /// Persisted reference scanning, so a book is analysed once. Bump `currentVersion` when heuristics change.
 public struct ReferenceCache: Codable, Sendable {
-    public static let currentVersion = 3
+    public static let currentVersion = 4
     public var version = ReferenceCache.currentVersion
     public var scannedPages: Set<Int> = []
     public var targets: [ReferenceTarget] = []
