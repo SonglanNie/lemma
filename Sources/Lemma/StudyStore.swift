@@ -250,8 +250,10 @@ final class StudyStore {
     @ObservationIgnored var questionPreset: QuestionPreset?
     /// Replaces opening Chrome, for tests and previews.
     @ObservationIgnored var urlOpener: ((URL) -> Void)?
-    /// PDFs the system asked Lemma to open before the last session was restored; opened right after it.
+    /// PDFs the system asked Lemma to open, waiting for the last session to be restored and for one another.
     @ObservationIgnored var pendingFileOpens: [URL] = []
+    /// The read in progress for the last of those PDFs taken from `pendingFileOpens`.
+    @ObservationIgnored private var requestedOpening: OpeningFile?
     @ObservationIgnored private(set) var restored = false
     /// Set once restore() has begun: reopening the window from the Dock runs the window's onAppear again.
     @ObservationIgnored var restoreStarted = false
@@ -379,14 +381,39 @@ final class StudyStore {
 
     func open(_ url: URL, toSide: Bool = false) { openFile(url, toSide: toSide) }
 
+    /// Opens a PDF the system asked for, after any before it: `openFile` replaces a read in progress, which would leave
+    /// only the last of several long books.
+    func openRequested(_ url: URL) {
+        pendingFileOpens.append(url)
+        guard restored, openingFile == nil || openingFile !== requestedOpening else { return }
+        openNextRequested()
+    }
+
+    /// `kept` is a file or Settings tab chosen while an earlier one of these PDFs was read: it stays in front of the rest.
+    private func openNextRequested(behind kept: String? = nil) {
+        guard !pendingFileOpens.isEmpty else { return }
+        let url = pendingFileOpens.removeFirst()
+        let outcome = openFile(url, behind: kept) { [weak self] opened in
+            guard let self else { return }
+            self.openNextRequested(behind: opened ? self.activeEditorID : kept)
+        }
+        if outcome == .pending { requestedOpening = openingFile }
+    }
+
     /// Opens a PDF in front, or beside the reader. Its fingerprint (the SHA-256 of its bytes) comes from the fingerprint cache
     /// when the file is known and unchanged, is read at once for a small local file, and otherwise off the main thread
     /// while the status bar says so (a long book, a network volume, a file in iCloud Drive). `then` runs once the book is
-    /// in front (true) or could not be opened (false); a request replaced by a newer one runs neither.
+    /// in front (true) or could not be opened (false); a request replaced by a newer one runs neither. A file or Settings
+    /// tab chosen while the PDF is read stays in front of it, and so does `kept` when it is still in front.
     @discardableResult
-    func openFile(_ url: URL, toSide: Bool = false, quiet: Bool = false, then: ((Bool) -> Void)? = nil) -> OpenOutcome {
+    func openFile(_ url: URL, toSide: Bool = false, quiet: Bool = false, behind kept: String? = nil,
+                  then: ((Bool) -> Void)? = nil) -> OpenOutcome {
         flush()
-        if let pending = openingFile { openingFile = nil; pending.cancel() }
+        if let pending = openingFile {
+            openingFile = nil; pending.cancel()
+            // A book chosen while the requested ones are being read takes their place, as it does a single one's.
+            if pending === requestedOpening { pendingFileOpens = [] }
+        }
         let scoped = url.startAccessingSecurityScopedResource()
         guard let stamp = FileStamp(url) else {
             // Moved, deleted, on a disk that is not connected: said at once, so closing a tab can try the next one.
@@ -394,14 +421,21 @@ final class StudyStore {
             return failOpen(url, CocoaError(missing ? .fileReadNoSuchFile : .fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path]),
                             scoped: scoped, quiet: quiet, then: then)
         }
+        let keptInFront = kept.flatMap { $0 == activeEditorID ? $0 : nil }
+        let thenAtOnce: ((Bool) -> Void)? = keptInFront.map { editor in
+            { [weak self] opened in
+                if opened { self?.activateMainTab(editor) }
+                then?(opened)
+            }
+        } ?? then
         if let known = fingerprints.fingerprint(for: stamp) {
-            return finishOpen(url, fingerprint: known, scoped: scoped, toSide: toSide, quiet: quiet, then: then)
+            return finishOpen(url, fingerprint: known, scoped: scoped, toSide: toSide, quiet: quiet, then: thenAtOnce)
         }
         guard SourceFingerprint.wantsBackground(url, limit: immediateHashLimit) else {
             do {
                 let read = try SourceFingerprint.read(url, coordinated: false)
                 if let stamp = read.stamp { fingerprints.record(read.fingerprint, for: stamp) }
-                return finishOpen(url, fingerprint: read.fingerprint, scoped: scoped, toSide: toSide, quiet: quiet, then: then)
+                return finishOpen(url, fingerprint: read.fingerprint, scoped: scoped, toSide: toSide, quiet: quiet, then: thenAtOnce)
             } catch { return failOpen(url, error, scoped: scoped, quiet: quiet, then: then) }
         }
         let opening = OpeningFile(url: url)
@@ -434,9 +468,9 @@ final class StudyStore {
             switch result {
             case let .success(fingerprint):
                 // A restored file or Settings tab can appear while the PDF is read. Completing that read must not
-                // replace the editor chosen since the request began.
-                let chosenEditor = self.activeMainTabID != initialMainTabID
-                    ? self.activeFileName.map(Self.fileTabID) ?? self.activeSpecial?.id : nil
+                // replace the editor chosen since the request began, or the one kept in front of it.
+                let editor = self.activeEditorID
+                let chosenEditor = self.activeMainTabID != initialMainTabID || (kept != nil && editor == kept) ? editor : nil
                 self.finishOpen(url, fingerprint: fingerprint, scoped: scoped, toSide: toSide, quiet: quiet) { opened in
                     if opened, let chosenEditor { self.activateMainTab(chosenEditor) }
                     then?(opened)
@@ -1018,8 +1052,7 @@ final class StudyStore {
         }
         if let name = savedActiveFile, fileTabs.contains(name) { openWorkspaceFile(name) }
         restored = true
-        let requested = pendingFileOpens; pendingFileOpens = []
-        for url in requested { open(url) }
+        openNextRequested()
         if workspace == nil, activeSpecial == nil, activeFileName == nil, openingFile == nil, (UserDefaults.standard.string(forKey: "workbench.startupEditor") ?? "welcomePage") == "welcomePage" {
             openSpecial(.welcome)
         }

@@ -144,6 +144,56 @@ final class DataIntegrityTests: XCTestCase {
         XCTAssertEqual(store.tabs.map(\.title), ["Other"])
     }
 
+    /// Long books read off the main thread: without the queue each request would replace the read before it.
+    @MainActor
+    func testPDFsOpenedTogetherEachGetATab() async throws {
+        let first = try pdf("First.pdf"), second = try pdf("Second.pdf"), third = try pdf("Third.pdf")
+        let store = store()
+        store.immediateHashLimit = 0
+        store.openLink(first)
+        XCTAssertEqual(store.pendingFileOpens, [first], "Waits for the session to be restored.")
+        store.restore()
+        store.openLink(second); store.openLink(third)
+        let deadline = Date.now.addingTimeInterval(10)
+        while store.tabs.count < 3, Date.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(store.tabs.map(\.title), ["First", "Second", "Third"])
+        XCTAssertEqual(store.workspace?.title, "Third")
+        XCTAssertEqual(store.pendingFileOpens, [])
+    }
+
+    @MainActor
+    func testSettingsChosenWhilePDFsOpenTogetherStaysInFrontOfThemAll() async throws {
+        let first = try pdf("First.pdf"), second = try pdf("Second.pdf"), third = try pdf("Third.pdf")
+        let store = store()
+        store.restore()
+        // Third is known, so it opens at once; the other two are read in the background.
+        store.open(third); store.closeAllBooks()
+        store.immediateHashLimit = 0
+        store.openLink(first); store.openLink(second); store.openLink(third)
+        store.openSpecial(.settings)
+        let deadline = Date.now.addingTimeInterval(10)
+        while store.tabs.count < 3 || !store.pendingFileOpens.isEmpty || store.openingFile != nil, Date.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(store.tabs.map(\.title), ["First", "Second", "Third"])
+        XCTAssertEqual(store.activeSpecial, .settings, "Neither the PDF being read nor the ones after it replace Settings.")
+        XCTAssertEqual(store.workspace?.title, "Third", "The last PDF waits behind Settings.")
+    }
+
+    @MainActor
+    func testABookChosenWhilePDFsOpenTogetherTakesTheirPlace() async throws {
+        let first = try pdf("First.pdf"), second = try pdf("Second.pdf"), chosen = try pdf("Chosen.pdf")
+        let store = store()
+        store.restore()
+        store.immediateHashLimit = 0
+        store.openLink(first); store.openLink(second)
+        store.immediateHashLimit = SourceFingerprint.immediateLimit
+        store.open(chosen)
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(store.tabs.map(\.title), ["Chosen"])
+        XCTAssertEqual(store.pendingFileOpens, [])
+    }
+
     @MainActor
     func testACopyOfAPDFIsABookOfItsOwn() throws {
         let original = try pdf("Book.pdf", title: "Linear Algebra Done Right")

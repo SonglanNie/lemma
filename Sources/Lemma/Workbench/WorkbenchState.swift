@@ -40,7 +40,9 @@ extension StudyStore {
     // MARK: Main editor group
 
     /// The id of the tab in front of the main editor group: a book's fingerprint or a special editor's id.
-    var activeMainTabID: String? { activeFileName.map(Self.fileTabID) ?? activeSpecial?.id ?? workspace?.id }
+    var activeMainTabID: String? { activeEditorID ?? workspace?.id }
+    /// The id of the file or special editor in front of the main editor group, when a book is not.
+    var activeEditorID: String? { activeFileName.map(Self.fileTabID) ?? activeSpecial?.id }
 
     func openSpecial(_ editor: SpecialEditor) {
         palette = nil

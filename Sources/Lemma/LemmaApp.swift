@@ -4,7 +4,8 @@ import LemmaCore
 
 @main
 struct LemmaApp: App {
-    @State private var app = AppModel()
+    @NSApplicationDelegateAdaptor(LemmaAppDelegate.self) private var delegate
+    private var app: AppModel { delegate.app }
 
     init() { ChatGPTSession.disableTextSubstitutions() }
 
@@ -26,6 +27,16 @@ struct LemmaApp: App {
     }
 }
 
+/// Of the files macOS opens together (several chosen in Finder, several dropped on the Dock icon), SwiftUI gives
+/// `onOpenURL` only the first and passes the others here, just after it.
+@MainActor
+final class LemmaAppDelegate: NSObject, NSApplicationDelegate {
+    let app = AppModel()
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls { app.front.openLink(url) }
+    }
+}
 
 /// SwiftUI owns one store per window. Only the first window restores the session and starts shared services.
 private struct ReaderScene: View {
@@ -37,7 +48,7 @@ private struct ReaderScene: View {
     var body: some View {
         Group {
             if let store {
-                ReaderWindow(store: store).onOpenURL { store.openLink($0) }
+                ReaderWindow(store: store).onOpenURL { app.front.openLink($0) }
             } else { Color.clear }
         }
         .frame(minWidth: 960, minHeight: 640)
