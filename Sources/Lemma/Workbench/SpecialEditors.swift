@@ -244,6 +244,34 @@ struct ReleaseNotesEditor: View {
     @Environment(\.theme) private var theme
 
     private let sections: [(String, String, [String])] = [
+        ("Lemma 3.6.0-fork.1: open several PDFs", "files", [
+            "Choosing several PDFs in Finder and pressing ⌘O, or dropping them on Lemma in the Dock, opens all of them, each in its own tab. Only the first opened before."
+        ]),
+        ("Lemma 3.6.0-fork.1: clearer pages", "references", [
+            "The reference counts beside equations, statements and captions sit in the page margin, level with their label, so they no longer cover the text. A page with no room in either margin shows no count, and hovering the label still gives it.",
+            "Long proofs fold whole, to their end mark on any later page. A citation wrapped to the start of a line no longer reads as a new statement or as an equation's label.",
+        ]),
+        ("Lemma 3.6.0-fork.1: pages macOS can't read", "warning", [
+            "A book with a page that crashes macOS's text selection now gets its analysis, and Lemma no longer crashes on showing or right-clicking that page. Text can't be selected there and Find skips it.",
+            "A page whose text never finishes reading no longer takes the Mac's memory: Lemma stops at 6 GB, sets the page aside and carries on. In a book with no analysis, such as a password-protected one, Lemma closes instead.",
+            "If Lemma stops on a page, it says which one as it closes, and the book opens safely next time.",
+        ]),
+        ("Lemma 3.6.0-fork.1: turn the page", "arrow-right", [
+            "← and → turn the page, as in PDFgear, at any zoom, in the main editor and the side editor: the next page's top comes to the top of the window, and two pages turn at a time in a two-page layout. They used to do nothing on a slide that fit the window.",
+            "An opened book takes the keyboard when nothing else has it, so the arrows work without a click on the page first."
+        ]),
+        ("Lemma 3.6.0-fork.1: open to the side", "split-horizontal", [
+            "⌘-drag a box around a figure, table or passage to open it beside the page. The arrow beside the split editor button opens this page, the selection or a box you draw there. ⌘-click still looks a word up.",
+            "⇧⌘-drag a box, in the main editor or the side editor, or click the picture-in-picture button, and it floats above the page in a window of its own, at the same size and zoom. Resizing the window scales it; keep several, from several books: they stay open across tabs and relaunches.",
+            "The side view opens fitted to the box, with the rest of the page around it, and names its tab after the figure, table or equation inside.",
+            "Opening the side editor, a notebook or a derivation, changing the layout or resizing a side bar keeps the page's zoom. Side pages open fitted to their text, not their paper.",
+            "In the Classic interface, a peek dragged away from its reference moves by its title bar every time, not only the first."
+        ]),
+        ("Lemma 3.6.0-fork.1: windows", "multiple-windows", [
+            "Drag a book's tab out of its window to open it in a new window there, onto another window's tabs or page to move it into that window, or choose Move Tab to New Window from the tab's menu.",
+            "A new window takes the side bars, panel and sizes of the window it comes from.",
+            "This fork's build has no Sparkle update feed, so an upstream release never installs over it. Lemma › Check for Updates… reports a newer release of this fork and opens its page."
+        ]),
         ("Lemma 3.6: annotations and reliable shared work", "edit", [
             "Annotate PDFs with pen, boxes, ellipses, lines, arrows and eraser. Move or resize shapes, choose color, width, dash and fill, undo your edits, and export a separate annotated PDF.",
             "Highlights fit individual lines, including mathematics. The compact palette has named colors, a shortcut for each color, and separate highlight and underline defaults.",
