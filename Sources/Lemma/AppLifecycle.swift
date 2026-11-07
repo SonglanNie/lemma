@@ -3,8 +3,9 @@ import AppKit
 /// Quitting and closing the reader window, whatever the window is doing: the session is saved and helpers stop even when
 /// the window was closed before Lemma quits (a window's own `onReceive` would not be there to hear it).
 ///
-/// Not an application delegate adaptor: with one, SwiftUI rebuilt the window's root view each time the menus were
-/// recomputed (closing a tab took twice as long), so the same work is done with notifications and an Apple event handler.
+/// Done with notifications and an Apple event handler, not in `LemmaAppDelegate`, which only takes files to open. An early
+/// delegate made SwiftUI rebuild the window's root view each time the menus were recomputed; this one doesn't: closing a
+/// tab evaluates the same views, in the same time, with it and without.
 @MainActor
 final class AppLifecycle: NSObject {
     static let shared = AppLifecycle()

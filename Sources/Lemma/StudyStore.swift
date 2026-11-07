@@ -250,8 +250,10 @@ final class StudyStore {
     @ObservationIgnored var questionPreset: QuestionPreset?
     /// Replaces opening Chrome, for tests and previews.
     @ObservationIgnored var urlOpener: ((URL) -> Void)?
-    /// PDFs the system asked Lemma to open before the last session was restored; opened right after it.
+    /// PDFs the system asked Lemma to open, waiting for the last session to be restored and for one another.
     @ObservationIgnored var pendingFileOpens: [URL] = []
+    /// The read in progress for the last of those PDFs taken from `pendingFileOpens`.
+    @ObservationIgnored private var requestedOpening: OpeningFile?
     @ObservationIgnored private(set) var restored = false
     /// Set once restore() has begun: reopening the window from the Dock runs the window's onAppear again.
     @ObservationIgnored var restoreStarted = false
@@ -379,6 +381,20 @@ final class StudyStore {
 
     func open(_ url: URL, toSide: Bool = false) { openFile(url, toSide: toSide) }
 
+    /// Opens a PDF the system asked for, after any before it: `openFile` replaces a read in progress, which would leave
+    /// only the last of several long books.
+    func openRequested(_ url: URL) {
+        pendingFileOpens.append(url)
+        guard restored, openingFile == nil || openingFile !== requestedOpening else { return }
+        openNextRequested()
+    }
+
+    private func openNextRequested() {
+        guard !pendingFileOpens.isEmpty else { return }
+        let url = pendingFileOpens.removeFirst()
+        if openFile(url, then: { [weak self] _ in self?.openNextRequested() }) == .pending { requestedOpening = openingFile }
+    }
+
     /// Opens a PDF in front, or beside the reader. Its fingerprint (the SHA-256 of its bytes) comes from the fingerprint cache
     /// when the file is known and unchanged, is read at once for a small local file, and otherwise off the main thread
     /// while the status bar says so (a long book, a network volume, a file in iCloud Drive). `then` runs once the book is
@@ -386,7 +402,11 @@ final class StudyStore {
     @discardableResult
     func openFile(_ url: URL, toSide: Bool = false, quiet: Bool = false, then: ((Bool) -> Void)? = nil) -> OpenOutcome {
         flush()
-        if let pending = openingFile { openingFile = nil; pending.cancel() }
+        if let pending = openingFile {
+            openingFile = nil; pending.cancel()
+            // A book chosen while the requested ones are being read takes their place, as it does a single one's.
+            if pending === requestedOpening { pendingFileOpens = [] }
+        }
         let scoped = url.startAccessingSecurityScopedResource()
         guard let stamp = FileStamp(url) else {
             // Moved, deleted, on a disk that is not connected: said at once, so closing a tab can try the next one.
@@ -1018,8 +1038,7 @@ final class StudyStore {
         }
         if let name = savedActiveFile, fileTabs.contains(name) { openWorkspaceFile(name) }
         restored = true
-        let requested = pendingFileOpens; pendingFileOpens = []
-        for url in requested { open(url) }
+        openNextRequested()
         if workspace == nil, activeSpecial == nil, activeFileName == nil, openingFile == nil, (UserDefaults.standard.string(forKey: "workbench.startupEditor") ?? "welcomePage") == "welcomePage" {
             openSpecial(.welcome)
         }

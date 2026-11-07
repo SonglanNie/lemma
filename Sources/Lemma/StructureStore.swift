@@ -317,7 +317,7 @@ extension StudyStore {
         // PDFs opened from Finder, dropped on the Dock icon or sent by another app ("Open With").
         if url.isFileURL {
             guard url.pathExtension.lowercased() == "pdf" else { return }
-            if restored { open(url) } else { pendingFileOpens.append(url) }
+            openRequested(url)
             return
         }
         guard url.scheme == "lemma", let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
