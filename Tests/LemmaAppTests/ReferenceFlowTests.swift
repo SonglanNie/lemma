@@ -299,6 +299,33 @@ final class ReferenceFlowTests: XCTestCase {
         view.closeKeptReferencePeeks()
     }
 
+    /// As the reader starts dragging a popover away, AppKit shows its own close button at the window's top left, over the
+    /// peek's title, from inside the drag; the peek keeps only its own, at the top right, as it has at its mention.
+    @MainActor
+    func testClassicPopoverKeepsAppKitsCloseButtonHidden() async throws {
+        _ = NSApplication.shared
+        let previous = ThemeManager.shared.style
+        ThemeManager.shared.style = .classic
+        defer { ThemeManager.shared.style = previous }
+        let fixture = try Fixture(hosted: true)
+        defer { fixture.close() }
+        let store = fixture.store
+        try await Task.sleep(for: .milliseconds(150))
+        let index = try XCTUnwrap(store.references)
+        store.reader.goToPage(3); store.reader.updatePage()
+        let mention = try XCTUnwrap(index.mentions(onPage: 2).first { !$0.isDefinition })
+        let view = try XCTUnwrap(store.reader.view)
+        store.peekReference(mention, pageIndex: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        let peek = try XCTUnwrap(view.referencePopover)
+        let appKitClose = try XCTUnwrap(peek.popover.contentViewController?.view.window?.standardWindowButton(.closeButton))
+        XCTAssertTrue(appKitClose.isHidden)
+        // What AppKit's drag does as it adds the detached window's title bar.
+        appKitClose.isHidden = false
+        XCTAssertTrue(appKitClose.isHidden, "Shown, AppKit's close button would sit over the title's icon as the peek is dragged.")
+        view.dismissReferencePeek()
+    }
+
     @MainActor
     func testClassicStyleKeepsTheReferencePopover() async throws {
         _ = NSApplication.shared

@@ -35,6 +35,8 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     /// resizes it.
     var autoPlace: (() -> Void)?
     private var monitors: [Any] = []
+    /// Keeps AppKit's close button for the popover's window hidden (`show(relativeTo:of:)`).
+    private var closeButtonWatch: NSKeyValueObservation?
     /// Moves the detached popover's window from its empty places (`popoverDidDetach`).
     private var moveMonitor: Any?
 
@@ -100,6 +102,15 @@ final class ReferencePeekPopover: NSObject, NSPopoverDelegate {
     func show(relativeTo rect: CGRect, of view: NSView) {
         anchor = view.window?.convertToScreen(view.convert(rect, to: nil))
         popover.show(relativeTo: rect, of: view, preferredEdge: .minY)
+        // As the reader starts dragging the popover away, AppKit shows its own close button at the window's top left, over
+        // the title's icon; the peek keeps its own at the top right, as in the VS Code style. AppKit shows it from inside
+        // the drag, with no delegate call around it, so the peek hides it again whenever it is shown.
+        if let close = popover.contentViewController?.view.window?.standardWindowButton(.closeButton) {
+            close.isHidden = true
+            closeButtonWatch = close.observe(\.isHidden) { close, _ in
+                MainActor.assumeIsolated { if !close.isHidden { close.isHidden = true } }
+            }
+        }
         placeEdges()
         // As a transient popover, it closes on a click elsewhere and on Escape in the reader's window, unless it is kept;
         // a Shift-click opens another peek beside it.
